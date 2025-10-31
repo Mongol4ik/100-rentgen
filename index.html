@@ -233,630 +233,806 @@
   </div>
 </div>
 
-<script>// 🔧 КОНФИГУРАЦИЯ - ЗАМЕНИТЕ ЭТО!
-const JSONBIN_BIN_ID = '6904b160ae596e708f3a36bf '; // Например: '67a1b2c3d4e5f6a7b8c9d0e1'
-const JSONBIN_MASTER_KEY = '$2a$10$wTicXNpl/tYWk2p1tuUuC.w87l4en0x8a9e7STVUKFIfFQnaZFdLC'; // Из настроек jsonbin.io
+<script>
+/* -------------------------
+   JSONBin Configuration
+   ------------------------- */
+const JSONBIN_BASE_URL = 'https://api.jsonbin.io/v3/b';
+const JSONBIN_MASTER_KEY = '$2a$10$wTicXNpl/tYWk2p1tuUuC.w87l4en0x8a9e7STVUKFIfFQnaZFdLC'; // Замените на ваш мастер-ключ
+const JSONBIN_ACCESS_KEY = '$2a$10$.twuYFU3QYQ1ZXPY.uyfB.7EryqBOUndWb3UbhjCfknwxJvHKo2LG'; // Замените на ваш access ключ
 
-
-// 📦 ДАННЫЕ ПО УМОЛЧАНИЮ
-let shopData = {
-    products: [],
-    users: {},
-    orders: {},
-    chats: {}
+// ID ваших bin'ов на JSONBin
+const JSONBIN_IDS = {
+  PRODUCTS: '6904f4cbae596e708f3ab82d',
+  USERS: '6904f5d843b1c97be98eff3a', 
+  CATS: '6904f52243b1c97be98efe37',
+  CHATS: '6904f602ae596e708f3aba24'
 };
 
-let categories = {
-    mains: [
-        {id:'weapon', title:'Оружие'},
-        {id:'armor', title:'Броня'},
-        {id:'attachments', title:'Обвесы'},
-        {id:'consumable', title:'Расходники'}
+/* -------------------------
+   Storage & defaults
+   ------------------------- */
+const KEY_PRODUCTS = 'products_v_final_v1';
+const KEY_USERS = 'users_v_final_v1';
+const KEY_CATS = 'cats_v_final_v1';
+const KEY_SELLER = 'isSeller_v1';
+const KEY_CHATS = 'chats_v1';
+
+const DEFAULT_CATS = {
+  mains: [
+    {id:'weapon', title:'Оружие'},
+    {id:'armor', title:'Броня'},
+    {id:'attachments', title:'Обвесы'},
+    {id:'consumable', title:'Расходники'}
+  ],
+  subs: {
+    weapon: [
+      {id:'sniper', title:'Снайперские'},
+      {id:'assault', title:'Штурмовые'},
+      {id:'smg', title:'ПП'},
+      {id:'pistol', title:'Пистолеты'}
     ],
-    subs: {
-        weapon: [
-            {id:'sniper', title:'Снайперские'},
-            {id:'assault', title:'Штурмовые'},
-            {id:'smg', title:'ПП'},
-            {id:'pistol', title:'Пистолеты'}
-        ],
-        armor: [
-            {id:'body', title:'Броня'},
-            {id:'helmet', title:'Шлемы'}
-        ]
-    },
-    attachTypes: ['Прицелы','Ручки','Приклады']
+    armor: [
+      {id:'body', title:'Броня'},
+      {id:'helmet', title:'Шлемы'}
+    ],
+    attachments:[
+      {id:'sight', title:'Прицелы'},
+      {id:'grip', title:'Ручки'},
+      {id:'stock', title:'Приклады'}
+    ]
+  },
+  attachTypes: ['Прицелы','Ручки','Приклады','Цевья','Магазин']
 };
 
+const DEFAULT_PRODUCTS = [
+  { id:1, name:'Пистолет ПМ', price:120, img:'https://i.imgur.com/7bHnZ0f.png', category:'weapon', subcategory:'pistol', caliber:'9x18mm', description:'Надёжный пистолет ближнего боя.', attachments: { 'Прицелы': [{name:'Коллиматор', price:60, img:'https://i.imgur.com/y1svLkP.png'}] } },
+  { id:2, name:'Винтовка АК', price:420, img:'https://i.imgur.com/t2G6M0l.png', category:'weapon', subcategory:'assault', caliber:'7.62x39mm', description:'Классическая штурмовая винтовка.', attachments: { 'Прицелы': [{name:'Оптика 4x', price:200, img:'https://i.imgur.com/I4bZpPZ.png'}], 'Приклады': [{name:'Складной приклад', price:150, img:'https://i.imgur.com/1YhTVEr.png'}] } },
+  { id:3, name:'Комбинезон', price:300, img:'https://i.imgur.com/Q9P6S0R.png', category:'armor', subcategory:'body', caliber:'', description:'Защитный комбез для рейдов.', attachments: {} }
+];
+
+let products = [];
+let cats = {};
+let users = {};
 let currentUser = null;
 let cart = [];
+const sellerPassword = 'admin123';
 let selectedCategory = 'all';
 let selectedSubcategory = null;
-const sellerPassword = 'admin123';
 
-// 📡 JSONBIN.IO ФУНКЦИИ
-async function loadFromJSONBin() {
-    try {
-        console.log('Загрузка данных из JSONBin...');
+/* -------------------------
+   JSONBin Helpers
+   ------------------------- */
+async function jsonbinFetch(binId, options = {}) {
+  const url = `${JSONBIN_BASE_URL}/${binId}`;
+  const headers = {
+    'Content-Type': 'application/json',
+    'X-Master-Key': JSONBIN_MASTER_KEY,
+    'X-Access-Key': JSONBIN_ACCESS_KEY,
+    ...options.headers
+  };
+  
+  try {
+    const response = await fetch(url, { ...options, headers });
+    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+    const data = await response.json();
+    return data.record;
+  } catch (error) {
+    console.error('JSONBin error:', error);
+    return null;
+  }
+}
+
+async function jsonbinUpdate(binId, data) {
+  return await jsonbinFetch(binId, {
+    method: 'PUT',
+    body: JSON.stringify(data)
+  });
+}
+
+async function loadJSON(key, fallback) {
+  try {
+    let binId;
+    switch(key) {
+      case KEY_PRODUCTS: binId = JSONBIN_IDS.PRODUCTS; break;
+      case KEY_USERS: binId = JSONBIN_IDS.USERS; break;
+      case KEY_CATS: binId = JSONBIN_IDS.CATS; break;
+      case KEY_CHATS: binId = JSONBIN_IDS.CHATS; break;
+      default: return JSON.parse(JSON.stringify(fallback));
+    }
+    
+    const data = await jsonbinFetch(binId);
+    return data || JSON.parse(JSON.stringify(fallback));
+  } catch(e) {
+    console.error('Load error:', e);
+    return JSON.parse(JSON.stringify(fallback));
+  }
+}
+
+async function saveJSON(key, val) {
+  try {
+    let binId;
+    switch(key) {
+      case KEY_PRODUCTS: binId = JSONBIN_IDS.PRODUCTS; break;
+      case KEY_USERS: binId = JSONBIN_IDS.USERS; break;
+      case KEY_CATS: binId = JSONBIN_IDS.CATS; break;
+      case KEY_CHATS: binId = JSONBIN_IDS.CHATS; break;
+      default: return;
+    }
+    
+    await jsonbinUpdate(binId, val);
+    return true;
+  } catch(e) {
+    console.error('Save error:', e);
+    return false;
+  }
+}
+
+const el = id => document.getElementById(id);
+
+/* Chat helpers */
+function chatKey(user, orderIndex){ return `${user}|${orderIndex}`; }
+async function loadChats(){ return await loadJSON(KEY_CHATS, {}); }
+async function saveChats(obj){ return await saveJSON(KEY_CHATS, obj); }
+async function loadChat(user, orderIndex){ const all = await loadChats(); return all[chatKey(user,orderIndex)] || ''; }
+async function saveChat(user, orderIndex, msg){ const all = await loadChats(); all[chatKey(user,orderIndex)] = msg; return await saveChats(all); }
+
+/* -------------------------
+   Data Initialization
+   ------------------------- */
+async function initializeData() {
+  try {
+    [products, users, cats] = await Promise.all([
+      loadJSON(KEY_PRODUCTS, DEFAULT_PRODUCTS),
+      loadJSON(KEY_USERS, {}),
+      loadJSON(KEY_CATS, DEFAULT_CATS)
+    ]);
+  } catch (error) {
+    console.error('Data initialization failed:', error);
+    // Fallback to defaults
+    products = JSON.parse(JSON.stringify(DEFAULT_PRODUCTS));
+    users = {};
+    cats = JSON.parse(JSON.stringify(DEFAULT_CATS));
+  }
+}
+
+/* -------------------------
+   Panels toggling (close others)
+   ------------------------- */
+function closeAllPanels(){
+  ['cartPanel','loginPanel','myOrdersPanel','sellerPanel'].forEach(id=>{ const e=el(id); if(e) e.style.display='none'; });
+  hideModal('productModalView'); hideModal('productModalEdit'); document.getElementById('overlay').style.display='none';
+}
+function togglePanel(panelId){
+  // close others
+  ['cartPanel','loginPanel','myOrdersPanel','sellerPanel'].forEach(id=>{ if(id!==panelId) el(id).style.display='none'; });
+  const p = el(panelId);
+  p.style.display = (p.style.display === 'block') ? 'none' : 'block';
+  hideModal('productModalView'); hideModal('productModalEdit');
+  document.getElementById('overlay').style.display='none';
+}
+
+/* Attach top buttons */
+el('btnCart').addEventListener('click', ()=> togglePanel('cartPanel'));
+el('btnLogin').addEventListener('click', ()=> togglePanel('loginPanel'));
+el('btnMyOrders').addEventListener('click', ()=> { renderMyOrders(); togglePanel('myOrdersPanel'); });
+el('btnSeller').addEventListener('click', ()=> togglePanel('sellerPanel'));
+
+/* -------------------------
+   Category rendering
+   ------------------------- */
+function slug(s){ return String(s||'').toLowerCase().replace(/\s+/g,'_').replace(/[^a-z0-9_]/gi,''); }
+
+function renderCategoryFilter(){
+  const wrap = el('categoryFilter'); wrap.innerHTML='';
+  const all = document.createElement('button'); all.textContent='Все'; if(selectedCategory==='all') all.classList.add('active');
+  all.onclick = ()=>{ selectedCategory='all'; selectedSubcategory=null; renderCategoryFilter(); renderSubcats(null); renderProducts(); };
+  wrap.appendChild(all);
+  cats.mains.forEach(m=>{
+    const b = document.createElement('button'); b.textContent = m.title;
+    if(selectedCategory===m.id) b.classList.add('active');
+    b.onclick = ()=>{ selectedCategory=m.id; selectedSubcategory=null; renderCategoryFilter(); renderSubcats(m.id); renderProducts(); };
+    wrap.appendChild(b);
+  });
+}
+function renderSubcats(mainId){
+  const container = el('subcategoryContainer'); container.innerHTML='';
+  if(!mainId || !cats.subs[mainId] || !cats.subs[mainId].length) return;
+  const wrap = document.createElement('div'); wrap.className='subcategoryFilter';
+  const bAll = document.createElement('button'); bAll.textContent='Все подкатегории';
+  bAll.onclick = ()=>{ selectedSubcategory=null; Array.from(wrap.querySelectorAll('button')).forEach(x=>x.classList.remove('active')); bAll.classList.add('active'); renderProducts(); };
+  wrap.appendChild(bAll);
+  cats.subs[mainId].forEach(sc=>{
+    const b = document.createElement('button'); b.textContent = sc.title;
+    b.onclick = ()=>{ selectedSubcategory = sc.id; Array.from(wrap.querySelectorAll('button')).forEach(x=>x.classList.remove('active')); b.classList.add('active'); renderProducts(); };
+    wrap.appendChild(b);
+  });
+  container.appendChild(wrap);
+}
+
+/* -------------------------
+   Products render
+   ------------------------- */
+function renderProducts(){
+  const list = el('productList'); list.innerHTML='';
+  products.filter(p=>{
+    if(selectedCategory!=='all' && p.category !== selectedCategory) return false;
+    if(selectedSubcategory && p.subcategory && p.subcategory !== selectedSubcategory) return false;
+    return true;
+  }).forEach(p=>{
+    const d = document.createElement('div'); d.className='product'; d.dataset.id = p.id;
+    d.innerHTML = `<img src="${p.img||''}" alt="${escapeHtml(p.name)}"><h3>${escapeHtml(p.name)}</h3><p class="muted">${p.caliber?p.caliber+' • ':''}${getCatTitle(p.category)} ${p.subcategory?'/ '+getSubTitle(p.category,p.subcategory):''}</p><p><b>${p.price} 💰</b></p>`;
+    d.addEventListener('click', ()=> openProductView(p.id));
+    list.appendChild(d);
+  });
+}
+
+/* -------------------------
+   Product view modal (attachments selection + total)
+   ------------------------- */
+function openProductView(prodId){
+  const p = products.find(x=>x.id===prodId); if(!p) return;
+  const wrap = el('productViewContent'); wrap.innerHTML='';
+  const content = document.createElement('div'); content.className='product-view';
+  const left = document.createElement('div'); left.className='product-view-left'; left.innerHTML=`<img src="${p.img||''}" alt="${escapeHtml(p.name)}">`;
+  const right = document.createElement('div'); right.className='product-view-right';
+  right.innerHTML = `<h3>${escapeHtml(p.name)}</h3><p class="muted">Категория: ${getCatTitle(p.category)} ${p.subcategory?'/ '+getSubTitle(p.category,p.subcategory):''}</p><p class="muted">Калибр: ${p.caliber||'—'}</p><p style="margin-top:8px">${escapeHtml(p.description||'')}</p><p style="margin-top:8px"><b>База: ${p.price} 💰</b></p><div id="pv_attach_area"></div><div style="margin-top:8px" class="total-line">Итого: <b id="pv_build_total">${p.price}</b> 💰</div><div style="display:flex;gap:8px;margin-top:12px;justify-content:flex-end"><button id="pv_add_to_cart" class="btn">Добавить в корзину</button><button id="pv_close" class="ghost">Закрыть</button></div>`;
+  content.appendChild(left); content.appendChild(right); wrap.appendChild(content);
+
+  // attachments grid
+  const attachArea = el('pv_attach_area'); attachArea.innerHTML='<strong>Обвесы:</strong>';
+  const grid = document.createElement('div'); grid.className='attach-grid';
+  const attachTypes = Object.keys(p.attachments || {});
+  const chosen = []; // {type,name,price,img,quantity}
+  
+  function updateTotalAndHighlight(){
+    // Учитываем количество
+    const extra = chosen.reduce((s,a)=>s + (a.price * (a.quantity || 1)), 0);
+    el('pv_build_total').textContent = p.price + extra;
+    
+    // highlight
+    grid.querySelectorAll('.attach-card').forEach(card=>{
+      const t = card.dataset.type, n = card.dataset.name;
+      const chosenItem = chosen.find(c=>c.type===t && c.name===n);
+      
+      if(chosenItem) {
+        card.classList.add('selected');
+        // Для количественных обвесов обновляем значение в селекторе
+        const select = card.querySelector('.quantity-select');
+        if(select) select.value = chosenItem.quantity || 0;
+        // Для обычных обвесов обновляем чекбокс
+        const checkbox = card.querySelector('input[type=checkbox]');
+        if(checkbox) checkbox.checked = true;
+      } else {
+        card.classList.remove('selected');
+        const select = card.querySelector('.quantity-select');
+        if(select) select.value = 0;
+        const checkbox = card.querySelector('input[type=checkbox]');
+        if(checkbox) checkbox.checked = false;
+      }
+    });
+  }
+  
+  if(attachTypes.length===0) grid.innerHTML = '<div class="muted" style="padding:8px">Нет обвесов</div>';
+  else {
+    attachTypes.forEach(type=>{
+      (p.attachments[type]||[]).forEach(opt=>{
+        const card = document.createElement('div'); 
+        card.className='attach-card';
+        card.dataset.type = type; 
+        card.dataset.name = opt.name;
         
-        const response = await fetch(`https://api.jsonbin.io/v3/b/${JSONBIN_BIN_ID}/latest`, {
-            headers: { 
-                'X-Master-Key': JSONBIN_MASTER_KEY
+        if(opt.quantity) {
+          // ДЛЯ КОЛИЧЕСТВЕННЫХ - селектор
+          card.innerHTML = `
+            <img src="${opt.img||''}" alt="${escapeHtml(opt.name)}">
+            <div class="title">${escapeHtml(opt.name)}</div>
+            <div class="price">${opt.price} 💰/шт</div>
+            <div class="row">
+              <select class="quantity-select" style="background:#080808;color:#fff;border:1px solid #333;border-radius:4px;padding:2px">
+                <option value="0">0</option>
+                <option value="1">1</option>
+                <option value="2">2</option>
+                <option value="3">3</option>
+                <option value="4">4</option>
+                <option value="5">5</option>
+                <option value="6">6</option>
+                <option value="7">7</option>
+                <option value="8">8</option>
+                <option value="9">9</option>
+                <option value="10">10</option>
+              </select>
+            </div>
+          `;
+          
+          // Обработчик для количественных обвесов
+          const select = card.querySelector('.quantity-select');
+          select.addEventListener('change', ()=>{
+            const qty = parseInt(select.value);
+            const existingIdx = chosen.findIndex(x=>x.type===type && x.name===opt.name);
+            
+            if(qty === 0 && existingIdx >= 0) {
+              chosen.splice(existingIdx, 1);
+            } else if(qty > 0) {
+              if(existingIdx >= 0) {
+                chosen[existingIdx].quantity = qty;
+              } else {
+                chosen.push({ 
+                  type, 
+                  name: opt.name, 
+                  price: opt.price, 
+                  img: opt.img,
+                  quantity: qty 
+                });
+              }
             }
-        });
-        
-        if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
+            updateTotalAndHighlight();
+          });
+        } else {
+          // ДЛЯ ОБЫЧНЫХ - чекбокс
+          card.innerHTML = `
+            <img src="${opt.img||''}" alt="${escapeHtml(opt.name)}">
+            <div class="title">${escapeHtml(opt.name)}</div>
+            <div class="price">${opt.price} 💰</div>
+            <div class="row"><label><input type="checkbox"></label></div>
+          `;
+          
+          // Обработчик для обычных обвесов
+          card.addEventListener('click', (ev)=>{
+            const cb = card.querySelector('input[type=checkbox]');
+            cb.checked = !cb.checked;
+            if(cb.checked) {
+              chosen.push({type, name: opt.name, price: opt.price, img: opt.img, quantity: 1});
+            } else {
+              const idx = chosen.findIndex(x=>x.type===type && x.name===opt.name);
+              if(idx>=0) chosen.splice(idx,1);
+            }
+            updateTotalAndHighlight();
+          });
         }
-        
-        const result = await response.json();
-        console.log('Данные получены из облака');
-        
-        // Безопасное обновление данных
-        if (result.record) {
-            shopData = result.record;
+        grid.appendChild(card);
+      });
+    });
+  }
+  attachArea.appendChild(grid);
+  updateTotalAndHighlight();
+
+  // add to cart
+  el('pv_add_to_cart').onclick = ()=>{
+    if(!currentUser){ alert('Войдите для покупки'); return; }
+    cart.push({ 
+      id:p.id, 
+      name:p.name, 
+      price:p.price, 
+      qty:1, 
+      attachments: chosen.map(x=>({
+        type: x.type,
+        name: x.name, 
+        price: x.price, 
+        img: x.img,
+        quantity: x.quantity || 1
+      })) 
+    });
+    updateCartUI(); 
+    hideModal('productModalView'); 
+    alert('Товар добавлен в корзину');
+  };
+  el('pv_close').onclick = ()=> hideModal('productModalView');
+
+  showModal('productModalView');
+}
+
+/* -------------------------
+   Modal helpers
+   ------------------------- */
+function showModal(id){ document.getElementById('overlay').style.display='block'; el(id).style.display='block'; }
+function hideModal(id){ if(el(id)) el(id).style.display='none'; document.getElementById('overlay').style.display='none'; }
+el('closeProductView').addEventListener('click', ()=> hideModal('productModalView'));
+el('closeProductEdit').addEventListener('click', ()=> hideModal('productModalEdit'));
+
+/* -------------------------
+   Cart UI
+   ------------------------- */
+function updateCartUI(){
+  const box = el('cartItems'); box.innerHTML=''; let total=0;
+  cart.forEach((it, idx)=>{
+    const row = document.createElement('div'); row.className='list-item';
+    const left = document.createElement('div'); 
+    let attachText = '';
+    if(it.attachments && it.attachments.length) {
+      attachText = it.attachments.map(a => {
+        if(a.quantity > 1) {
+          return `${a.name} ×${a.quantity} (${a.price * a.quantity}💰)`;
+        } else {
+          return `${a.name} (${a.price}💰)`;
         }
-        
-        return true;
-        
-    } catch (error) {
-        console.log('Ошибка загрузки из JSONBin:', error.message);
-        return false;
+      }).join(', ');
     }
+    left.innerHTML = `<div><b>${escapeHtml(it.name)}</b></div><div class="muted">${attachText}</div>`;
+    const right = document.createElement('div'); right.innerHTML = `<div>${it.price} 💰 × <input type="number" value="${it.qty}" min="1" style="width:60px" data-idx="${idx}"></div><div style="margin-top:6px"><button data-rem="${idx}" class="ghost">❌</button></div>`;
+    row.appendChild(left); row.appendChild(right); box.appendChild(row);
+    // Учитываем количество в обвесах
+    total += it.price * (it.qty||1) + (it.attachments? it.attachments.reduce((s,a)=>s + (a.price * (a.quantity || 1)),0):0);
+  });
+  el('cartTotal').textContent = total;
+  box.querySelectorAll('input[type=number]').forEach(inp=> inp.addEventListener('change', e=>{ const i = parseInt(e.target.dataset.idx); cart[i].qty = Math.max(1, parseInt(e.target.value)||1); updateCartUI(); }));
+  box.querySelectorAll('button[data-rem]').forEach(btn=> btn.addEventListener('click', ()=>{ cart.splice(parseInt(btn.dataset.rem),1); updateCartUI(); }));
 }
 
-async function saveToJSONBin() {
-    try {
-        const response = await fetch(`https://api.jsonbin.io/v3/b/${JSONBIN_BIN_ID}`, {
-            method: 'PUT',
-            headers: {
-                'Content-Type': 'application/json',
-                'X-Master-Key': JSONBIN_MASTER_KEY
-            },
-            body: JSON.stringify(shopData)
-        });
-        
-        if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
-        }
-        
-        console.log('✅ Данные сохранены в JSONBin!');
-        return true;
-        
-    } catch (error) {
-        console.error('❌ Ошибка сохранения в JSONBin:', error);
-        return false;
-    }
+el('btnCheckout').addEventListener('click', async ()=> {
+  if(!currentUser){ alert('Войдите'); return; }
+  if(cart.length===0) return alert('Корзина пуста');
+  users = await loadJSON(KEY_USERS, users);
+  users[currentUser] = users[currentUser] || { password:'', orders:[] };
+  users[currentUser].orders = users[currentUser].orders || [];
+  users[currentUser].orders.push({ 
+    id: Date.now(), 
+    date: new Date().toLocaleString(), 
+    items: JSON.parse(JSON.stringify(cart)), 
+    status: 'pending',
+    total: cart.reduce((s,it)=>s + it.price * (it.qty||1) + (it.attachments? it.attachments.reduce((sa,a)=>sa + (a.price * (a.quantity || 1)),0):0),0)
+  });
+  const saved = await saveJSON(KEY_USERS, users);
+  if(saved) {
+    alert('Заявка отправлена');
+    cart = []; updateCartUI(); togglePanel('cartPanel');
+  } else {
+    alert('Ошибка сохранения заявки');
+  }
+});
+
+/* -------------------------
+   Login / Register
+   ------------------------- */
+el('btnRegister').addEventListener('click', async ()=>{
+  const u = el('username').value.trim(), p = el('password').value.trim();
+  if(!u || !p) return alert('Заполните поля');
+  users = await loadJSON(KEY_USERS, users);
+  if(users[u]) return alert('Имя занято');
+  users[u] = { password: p, orders: [] };
+  const saved = await saveJSON(KEY_USERS, users);
+  if(saved) { alert('Регистрация успешна'); currentUser = u; updateUserUI(); togglePanel('loginPanel'); } 
+  else alert('Ошибка сохранения');
+});
+el('btnSignIn').addEventListener('click', async ()=>{
+  const u = el('username').value.trim(), p = el('password').value.trim();
+  if(!u || !p) return alert('Заполните поля');
+  users = await loadJSON(KEY_USERS, users);
+  if(users[u] && users[u].password === p){ currentUser = u; updateUserUI(); togglePanel('loginPanel'); }
+  else alert('Неверные данные');
+});
+
+function updateUserUI(){
+  el('btnLogin').style.display = currentUser ? 'none' : 'block';
+  el('btnMyOrders').style.display = currentUser ? 'block' : 'none';
 }
 
-// 💾 СОХРАНЕНИЕ ДАННЫХ
-async function saveData() {
-    // Сохраняем в JSONBin (облако)
-    await saveToJSONBin();
+/* -------------------------
+   My Orders
+   ------------------------- */
+async function renderMyOrders(){
+  const list = el('myOrdersList'); list.innerHTML='';
+  if(!currentUser) return;
+  users = await loadJSON(KEY_USERS, users);
+  const user = users[currentUser];
+  if(!user || !user.orders || !user.orders.length) return list.innerHTML='<div class="muted">Нет заявок</div>';
+  user.orders.forEach((o,idx)=>{
+    const d = document.createElement('div'); d.className='list-item';
+    d.innerHTML = `<div><b>Заявка #${o.id}</b><div class="muted">${o.date}</div><div class="muted">${o.items.length} товаров</div></div><div><b>${o.total} 💰</b><div class="muted">${o.status}</div></div>`;
+    list.appendChild(d);
+  });
 }
 
-// 🎯 ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ
-function el(id) { return document.getElementById(id); }
-function escapeHtml(text) { return String(text||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
-
-// 📱 ПАНЕЛИ И МОДАЛЬНЫЕ ОКНА
-function closeAllPanels() {
-    ['cartPanel','loginPanel','myOrdersPanel','sellerPanel'].forEach(id => {
-        if (el(id)) el(id).style.display = 'none';
-    });
-    if (el('overlay')) el('overlay').style.display = 'none';
-}
-
-function togglePanel(panelId) {
-    closeAllPanels();
-    if (el(panelId)) el(panelId).style.display = 'block';
-    if (el('overlay')) el('overlay').style.display = 'block';
-}
-
-// 🗂️ КАТЕГОРИИ И ФИЛЬТРЫ
-function renderCategoryFilter() {
-    const wrap = el('categoryFilter');
-    if (!wrap) return;
-    
-    wrap.innerHTML = '';
-    
-    const allBtn = document.createElement('button');
-    allBtn.textContent = 'Все';
-    allBtn.className = selectedCategory === 'all' ? 'active' : '';
-    allBtn.onclick = () => {
-        selectedCategory = 'all';
-        selectedSubcategory = null;
-        renderCategoryFilter();
-        renderSubcats(null);
-        renderProducts();
-    };
-    wrap.appendChild(allBtn);
-    
-    categories.mains.forEach(cat => {
-        const btn = document.createElement('button');
-        btn.textContent = cat.title;
-        btn.className = selectedCategory === cat.id ? 'active' : '';
-        btn.onclick = () => {
-            selectedCategory = cat.id;
-            selectedSubcategory = null;
-            renderCategoryFilter();
-            renderSubcats(cat.id);
-            renderProducts();
-        };
-        wrap.appendChild(btn);
-    });
-}
-
-function renderSubcats(mainId) {
-    const container = el('subcategoryContainer');
-    if (!container) return;
-    
-    container.innerHTML = '';
-    
-    if (!mainId || !categories.subs[mainId]) return;
-    
-    const wrap = document.createElement('div');
-    wrap.className = 'subcategoryFilter';
-    
-    const allBtn = document.createElement('button');
-    allBtn.textContent = 'Все подкатегории';
-    allBtn.className = selectedSubcategory === null ? 'active' : '';
-    allBtn.onclick = () => {
-        selectedSubcategory = null;
-        renderProducts();
-    };
-    wrap.appendChild(allBtn);
-    
-    categories.subs[mainId].forEach(sub => {
-        const btn = document.createElement('button');
-        btn.textContent = sub.title;
-        btn.className = selectedSubcategory === sub.id ? 'active' : '';
-        btn.onclick = () => {
-            selectedSubcategory = sub.id;
-            renderProducts();
-        };
-        wrap.appendChild(btn);
-    });
-    
-    container.appendChild(wrap);
-}
-
-// 🎯 ОТОБРАЖЕНИЕ ТОВАРОВ
-function renderProducts() {
-    const container = el('productList');
-    if (!container) return;
-    
-    container.innerHTML = '';
-    
-    const filteredProducts = shopData.products.filter(product => {
-        if (selectedCategory !== 'all' && product.category !== selectedCategory) return false;
-        if (selectedSubcategory && product.subcategory !== selectedSubcategory) return false;
-        return true;
-    });
-    
-    if (filteredProducts.length === 0) {
-        container.innerHTML = '<div class="muted">Товары не найдены</div>';
-        return;
-    }
-    
-    filteredProducts.forEach(product => {
-        const productDiv = document.createElement('div');
-        productDiv.className = 'product';
-        productDiv.onclick = () => openProductView(product.id);
-        
-        productDiv.innerHTML = `
-            <img src="${product.img || 'https://picsum.photos/300/200?random=' + product.id}" alt="${product.name}">
-            <h3>${product.name}</h3>
-            <p class="muted">${getCatTitle(product.category)}</p>
-            <p><b>${product.price} ₽</b></p>
-        `;
-        container.appendChild(productDiv);
-    });
-}
-
-function getCatTitle(id) {
-    const cat = categories.mains.find(c => c.id === id);
-    return cat ? cat.title : id;
-}
-
-// 👤 СИСТЕМА ПОЛЬЗОВАТЕЛЕЙ
-async function handleLogin() {
-    const username = el('username').value.trim();
-    const password = el('password').value.trim();
-    
-    if (!username || !password) {
-        alert('Введите логин и пароль');
-        return;
-    }
-    
-    // Регистрация или вход
-    if (!shopData.users[username]) {
-        shopData.users[username] = { password, orders: [] };
-        await saveData(); // Сохраняем в JSONBin
-        alert('Регистрация успешна!');
-    }
-    
-    if (shopData.users[username].password === password) {
-        currentUser = username;
-        el('btnMyOrders').style.display = 'inline-block';
-        closeAllPanels();
-        alert(`Добро пожаловать, ${username}!`);
-    } else {
-        alert('Неверный пароль');
-    }
-}
-
-// 🛒 КОРЗИНА
-function addToCart(productId) {
-    if (!currentUser) {
-        alert('Войдите для покупки');
-        togglePanel('loginPanel');
-        return;
-    }
-    
-    const product = shopData.products.find(p => p.id === productId);
-    if (product) {
-        cart.push({
-            id: product.id,
-            name: product.name,
-            price: product.price,
-            qty: 1
-        });
-        updateCartUI();
-        alert('Товар добавлен в корзину!');
-    }
-}
-
-function updateCartUI() {
-    const cartItems = el('cartItems');
-    const total = el('cartTotal');
-    
-    if (!cartItems || !total) return;
-    
-    cartItems.innerHTML = '';
-    let sum = 0;
-    
-    cart.forEach((item, index) => {
-        sum += item.price * item.qty;
-        const itemDiv = document.createElement('div');
-        itemDiv.className = 'list-item';
-        itemDiv.innerHTML = `
-            <div style="flex:1">
-                <b>${item.name}</b>
-                <div class="muted">${item.price} ₽ × ${item.qty}</div>
-            </div>
-            <div>
-                <b>${item.price * item.qty} ₽</b>
-                <button class="ghost" onclick="removeFromCart(${index})" style="margin-left:8px">❌</button>
-            </div>
-        `;
-        cartItems.appendChild(itemDiv);
-    });
-    
-    total.textContent = sum;
-}
-
-function removeFromCart(index) {
-    cart.splice(index, 1);
-    updateCartUI();
-}
-
-async function checkout() {
-    if (!currentUser) {
-        alert('Войдите для оформления заказа');
-        return;
-    }
-    
-    if (cart.length === 0) {
-        alert('Корзина пуста');
-        return;
-    }
-    
-    const order = {
-        id: Date.now(),
-        items: [...cart],
-        total: cart.reduce((sum, item) => sum + (item.price * item.qty), 0),
-        timestamp: new Date().toISOString(),
-        status: 'new'
-    };
-    
-    shopData.users[currentUser].orders.push(order);
-    shopData.orders[order.id] = order;
-    
-    await saveData(); // Сохраняем в JSONBin
-    
-    cart = [];
-    updateCartUI();
-    closeAllPanels();
-    
-    alert(`Заказ #${order.id} оформлен!`);
-}
-
-// 👑 ПАНЕЛЬ ПРОДАВЦА
-async function handleSellerLogin() {
-    const password = el('sellerPass').value;
-    
-    if (password === sellerPassword) {
-        el('sellerLoginArea').style.display = 'none';
-        el('sellerArea').style.display = 'block';
-        renderSellerProducts();
-        renderCategoriesEditor();
-    } else {
-        alert('Неверный пароль продавца');
-    }
-}
-
-function renderSellerProducts() {
-    const container = el('productsEditorList');
-    if (!container) return;
-    
-    container.innerHTML = '';
-    
-    if (shopData.products.length === 0) {
-        container.innerHTML = '<div class="muted">Товаров пока нет</div>';
-        return;
-    }
-    
-    shopData.products.forEach(product => {
-        const itemDiv = document.createElement('div');
-        itemDiv.className = 'list-item';
-        itemDiv.innerHTML = `
-            <div style="flex:1">
-                <b>${product.name}</b>
-                <div class="muted">${product.price} ₽ • ${getCatTitle(product.category)}</div>
-            </div>
-            <div style="display:flex;gap:6px">
-                <button class="ghost" onclick="editProduct(${product.id})">✏️</button>
-                <button class="ghost" onclick="deleteProduct(${product.id})">❌</button>
-            </div>
-        `;
-        container.appendChild(itemDiv);
-    });
-}
-
-async function createNewProduct() {
-    const newProduct = {
-        id: Date.now(),
-        name: 'Новый товар',
-        price: 1000,
-        category: 'weapon',
-        subcategory: 'assault',
-        img: 'https://picsum.photos/300/200?random=' + Date.now(),
-        description: 'Описание товара',
-        caliber: '',
-        attachments: {}
-    };
-    
-    shopData.products.push(newProduct);
-    await saveData(); // Сохраняем в JSONBin
+/* -------------------------
+   Seller Panel
+   ------------------------- */
+el('btnSellerLogin').addEventListener('click', ()=>{
+  const pass = el('sellerPass').value;
+  if(pass === sellerPassword){
+    el('sellerLoginArea').style.display='none';
+    el('sellerArea').style.display='block';
+    renderSellerOrders();
     renderSellerProducts();
-    renderProducts();
-    alert('Товар создан!');
+    renderSellerCategories();
+  } else alert('Неверный пароль');
+});
+el('btnSellerCancel').addEventListener('click', ()=> togglePanel('sellerPanel'));
+
+el('tabOrders').addEventListener('click', ()=> { showSection('sellerOrdersSection'); });
+el('tabProducts').addEventListener('click', ()=> { showSection('sellerProductsSection'); renderSellerProducts(); });
+el('tabCategories').addEventListener('click', ()=> { showSection('sellerCategoriesSection'); renderSellerCategories(); });
+function showSection(id){ ['sellerOrdersSection','sellerProductsSection','sellerCategoriesSection'].forEach(s=>el(s).style.display='none'); el(id).style.display='block'; }
+el('btnSellerLogout').addEventListener('click', ()=>{ el('sellerLoginArea').style.display='block'; el('sellerArea').style.display='none'; });
+
+/* Seller Orders */
+async function renderSellerOrders(){
+  const list = el('ordersList'); list.innerHTML='';
+  users = await loadJSON(KEY_USERS, users);
+  const allOrders = [];
+  Object.keys(users).forEach(u=>{
+    if(users[u].orders) users[u].orders.forEach(o=> allOrders.push({...o, user:u}));
+  });
+  allOrders.sort((a,b)=>b.id - a.id);
+  if(allOrders.length===0) return list.innerHTML='<div class="muted">Нет заявок</div>';
+  allOrders.forEach(o=>{
+    const d = document.createElement('div'); d.className='list-item';
+    d.innerHTML = `<div><b>${escapeHtml(o.user)}</b><div class="muted">${o.date}</div><div class="muted">${o.items.length} товаров</div></div><div><b>${o.total} 💰</b><div class="muted">${o.status}</div><div style="margin-top:6px"><button class="ghost" data-user="${o.user}" data-id="${o.id}">Чат</button></div></div>`;
+    list.appendChild(d);
+    d.querySelector('button').addEventListener('click', ()=> openChatModal(o.user, o.id));
+  });
 }
 
-async function deleteProduct(productId) {
-    if (confirm('Удалить товар?')) {
-        shopData.products = shopData.products.filter(p => p.id !== productId);
-        await saveData(); // Сохраняем в JSONBin
-        renderSellerProducts();
-        renderProducts();
-        alert('Товар удален!');
-    }
+/* Chat Modal */
+async function openChatModal(user, orderId){
+  const modal = document.createElement('div'); modal.className='modal'; modal.id='chatModal';
+  modal.innerHTML = `<button class="close" id="closeChatModal">✕</button><h2>Чат с ${escapeHtml(user)}</h2><div id="chatMessages" style="max-height:300px;overflow:auto;border:1px solid #333;padding:8px;border-radius:6px;margin-bottom:8px"></div><div class="msg-box"><textarea id="chatInput" placeholder="Сообщение" style="flex:1"></textarea><button id="sendChatMsg" class="btn">📤</button></div><div class="chat-note">Сообщение сохранится и будет видно только вам</div>`;
+  document.body.appendChild(modal);
+  showModal('chatModal');
+  
+  const msgArea = el('chatMessages');
+  const loadChatMsg = async ()=>{
+    const msg = await loadChat(user, orderId);
+    msgArea.innerHTML = msg ? `<div>${escapeHtml(msg)}</div>` : '<div class="muted">Нет сообщений</div>';
+  };
+  await loadChatMsg();
+  
+  el('sendChatMsg').onclick = async ()=>{
+    const txt = el('chatInput').value.trim();
+    if(!txt) return;
+    const saved = await saveChat(user, orderId, txt);
+    if(saved) { await loadChatMsg(); el('chatInput').value=''; }
+    else alert('Ошибка сохранения');
+  };
+  el('closeChatModal').onclick = ()=>{ document.body.removeChild(modal); hideModal('chatModal'); };
 }
 
-// 📝 РЕДАКТОР КАТЕГОРИЙ
-function renderCategoriesEditor() {
-    renderMainCategories();
-    renderSubCategories();
-    renderAttachTypes();
-}
-
-function renderMainCategories() {
-    const container = el('mainCategoriesList');
-    if (!container) return;
-    
-    container.innerHTML = '';
-    
-    categories.mains.forEach(cat => {
-        const itemDiv = document.createElement('div');
-        itemDiv.className = 'list-item';
-        itemDiv.innerHTML = `
-            <div style="flex:1">${cat.title}</div>
-            <button class="ghost" onclick="deleteMainCategory('${cat.id}')">❌</button>
-        `;
-        container.appendChild(itemDiv);
+/* Seller Products */
+async function renderSellerProducts(){
+  const list = el('productsEditorList'); list.innerHTML='';
+  products.forEach(p=>{
+    const d = document.createElement('div'); d.className='list-item';
+    d.innerHTML = `<div><b>${escapeHtml(p.name)}</b><div class="muted">${p.price} 💰</div></div><div><button class="ghost" data-edit="${p.id}">✏️</button><button class="ghost" data-del="${p.id}">❌</button></div>`;
+    list.appendChild(d);
+    d.querySelector(`button[data-edit="${p.id}"]`).addEventListener('click', ()=> openProductEdit(p.id));
+    d.querySelector(`button[data-del="${p.id}"]`).addEventListener('click', async ()=>{ 
+      if(confirm('Удалить?')){ 
+        products = products.filter(x=>x.id!==p.id); 
+        const saved = await saveJSON(KEY_PRODUCTS, products);
+        if(saved) renderSellerProducts(); 
+        else alert('Ошибка удаления');
+      } 
     });
+  });
 }
 
-async function addMainCategory() {
-    const name = el('newMainCat').value.trim();
-    if (!name) {
-        alert('Введите название категории');
-        return;
-    }
-    
-    const id = name.toLowerCase().replace(/\s+/g, '_');
-    
-    if (categories.mains.find(c => c.id === id)) {
-        alert('Категория уже существует');
-        return;
-    }
-    
-    categories.mains.push({ id, title: name });
-    categories.subs[id] = [];
-    el('newMainCat').value = '';
-    
-    renderCategoriesEditor();
-    renderCategoryFilter();
-    alert('Категория добавлена!');
-}
+el('btnNewProduct').addEventListener('click', ()=> openProductEdit(null));
 
-async function deleteMainCategory(catId) {
-    if (confirm('Удалить категорию?')) {
-        categories.mains = categories.mains.filter(c => c.id !== catId);
-        delete categories.subs[catId];
-        renderCategoriesEditor();
-        renderCategoryFilter();
-        renderProducts();
-        alert('Категория удалена!');
+function openProductEdit(prodId){
+  const p = prodId ? products.find(x=>x.id===prodId) : null;
+  el('editTitle').textContent = p ? 'Редактировать товар' : 'Добавить товар';
+  const form = el('productEditForm'); form.innerHTML='';
+  
+  const fields = [
+    {tag:'input', id:'pe_name', label:'Название', type:'text', value:p?.name||''},
+    {tag:'input', id:'pe_price', label:'Цена', type:'number', value:p?.price||0},
+    {tag:'input', id:'pe_img', label:'Картинка (URL)', type:'text', value:p?.img||''},
+    {tag:'select', id:'pe_category', label:'Категория', options: cats.mains.map(m=>({value:m.id, text:m.title})), value:p?.category||''},
+    {tag:'select', id:'pe_subcategory', label:'Подкатегория', options: [], value:p?.subcategory||''},
+    {tag:'input', id:'pe_caliber', label:'Калибр', type:'text', value:p?.caliber||''},
+    {tag:'textarea', id:'pe_desc', label:'Описание', value:p?.description||''}
+  ];
+  
+  fields.forEach(f=>{
+    const row = document.createElement('div'); row.className='form-row';
+    const col = document.createElement('div'); col.className='form-col';
+    const lbl = document.createElement('label'); lbl.textContent = f.label; lbl.htmlFor = f.id;
+    col.appendChild(lbl);
+    let elm;
+    if(f.tag==='select'){
+      elm = document.createElement('select'); elm.id = f.id;
+      f.options.forEach(opt=>{ const o = document.createElement('option'); o.value=opt.value; o.textContent=opt.text; if(f.value===opt.value) o.selected=true; elm.appendChild(o); });
+    } else if(f.tag==='textarea'){
+      elm = document.createElement('textarea'); elm.id = f.id; elm.value = f.value||'';
+    } else {
+      elm = document.createElement('input'); elm.type = f.type; elm.id = f.id; elm.value = f.value||'';
     }
-}
-
-function renderSubCategories() {
-    const mainSelect = el('subForMain');
-    const container = el('subCatsList');
-    
-    if (!mainSelect || !container) return;
-    
-    // Заполняем выбор основной категории
-    mainSelect.innerHTML = '';
-    categories.mains.forEach(cat => {
-        const option = document.createElement('option');
-        option.value = cat.id;
-        option.textContent = cat.title;
-        mainSelect.appendChild(option);
-    });
-    
-    // Показываем подкатегории для выбранной основной
-    const selectedMain = mainSelect.value;
-    container.innerHTML = '';
-    
-    if (categories.subs[selectedMain]) {
-        categories.subs[selectedMain].forEach(sub => {
-            const itemDiv = document.createElement('div');
-            itemDiv.className = 'list-item';
-            itemDiv.innerHTML = `
-                <div style="flex:1">${sub.title}</div>
-                <button class="ghost" onclick="deleteSubCategory('${selectedMain}', '${sub.id}')">❌</button>
-            `;
-            container.appendChild(itemDiv);
+    col.appendChild(elm); row.appendChild(col); form.appendChild(row);
+  });
+  
+  // Обновление подкатегорий при изменении категории
+  el('pe_category').addEventListener('change', ()=> updateSubcatOptions());
+  function updateSubcatOptions(){
+    const mainId = el('pe_category').value;
+    const subSel = el('pe_subcategory'); subSel.innerHTML='';
+    const subs = cats.subs[mainId] || [];
+    subs.forEach(sc=>{ const o = document.createElement('option'); o.value=sc.id; o.textContent=sc.title; subSel.appendChild(o); });
+    if(p && p.category===mainId) subSel.value = p.subcategory||'';
+  }
+  updateSubcatOptions();
+  
+  // Attachments editor
+  const attachRow = document.createElement('div'); attachRow.className='form-row';
+  const attachCol = document.createElement('div'); attachCol.className='form-col';
+  attachCol.innerHTML = '<label>Обвесы</label><div id="pe_attachments_list"></div><div class="attach-row"><select id="pe_attach_type"><option value="">Выберите тип</option>'+cats.attachTypes.map(t=>`<option value="${t}">${t}</option>`).join('')+'</select><input id="pe_attach_name" placeholder="Название"><input id="pe_attach_price" placeholder="Цена" type="number"><input id="pe_attach_img" placeholder="Картинка (URL)"><button id="pe_attach_add" class="ghost">+</button></div><div class="small-muted">Для количественных обвесов добавьте " (xN)" в конце названия</div>';
+  attachRow.appendChild(attachCol); form.appendChild(attachRow);
+  
+  const attachList = el('pe_attachments_list');
+  const currentAttach = p ? JSON.parse(JSON.stringify(p.attachments||{})) : {};
+  function renderAttachmentsList(){
+    attachList.innerHTML='';
+    Object.keys(currentAttach).forEach(type=>{
+      currentAttach[type].forEach((att, idx)=>{
+        const d = document.createElement('div'); d.className='attach-row';
+        d.innerHTML = `<span>${type}: ${att.name} (${att.price}💰)</span><button class="ghost" data-type="${type}" data-idx="${idx}">❌</button>`;
+        attachList.appendChild(d);
+        d.querySelector('button').addEventListener('click', ()=>{
+          currentAttach[type].splice(idx,1);
+          if(currentAttach[type].length===0) delete currentAttach[type];
+          renderAttachmentsList();
         });
-    }
-}
-
-async function addSubCategory() {
-    const mainId = el('subForMain').value;
-    const name = el('newSubCat').value.trim();
-    
-    if (!name) {
-        alert('Введите название подкатегории');
-        return;
-    }
-    
-    const id = name.toLowerCase().replace(/\s+/g, '_');
-    
-    if (!categories.subs[mainId]) {
-        categories.subs[mainId] = [];
-    }
-    
-    if (categories.subs[mainId].find(s => s.id === id)) {
-        alert('Подкатегория уже существует');
-        return;
-    }
-    
-    categories.subs[mainId].push({ id, title: name });
-    el('newSubCat').value = '';
-    
-    renderSubCategories();
-    alert('Подкатегория добавлена!');
-}
-
-async function deleteSubCategory(mainId, subId) {
-    if (confirm('Удалить подкатегорию?')) {
-        categories.subs[mainId] = categories.subs[mainId].filter(s => s.id !== subId);
-        renderSubCategories();
-        renderProducts();
-        alert('Подкатегория удалена!');
-    }
-}
-
-function renderAttachTypes() {
-    const container = el('attachTypesList');
-    if (!container) return;
-    
-    container.innerHTML = '';
-    
-    categories.attachTypes.forEach((type, index) => {
-        const itemDiv = document.createElement('div');
-        itemDiv.className = 'list-item';
-        itemDiv.innerHTML = `
-            <div style="flex:1">${type}</div>
-            <button class="ghost" onclick="deleteAttachType(${index})">❌</button>
-        `;
-        container.appendChild(itemDiv);
+      });
     });
-}
-
-async function addAttachType() {
-    const name = el('newAttachType').value.trim();
-    if (!name) {
-        alert('Введите название типа обвеса');
-        return;
+  }
+  renderAttachmentsList();
+  
+  el('pe_attach_add').addEventListener('click', ()=>{
+    const type = el('pe_attach_type').value, name = el('pe_attach_name').value.trim(), price = parseInt(el('pe_attach_price').value)||0, img = el('pe_attach_img').value.trim();
+    if(!type || !name || !price) return alert('Заполните тип, название и цену');
+    if(!currentAttach[type]) currentAttach[type] = [];
+    currentAttach[type].push({ name, price, img });
+    renderAttachmentsList();
+    el('pe_attach_name').value=''; el('pe_attach_price').value=''; el('pe_attach_img').value='';
+  });
+  
+  // Save button
+  const saveRow = document.createElement('div'); saveRow.className='form-row';
+  const saveCol = document.createElement('div'); saveCol.className='form-col';
+  saveCol.innerHTML = `<button id="pe_save" class="btn">Сохранить</button>`;
+  saveRow.appendChild(saveCol); form.appendChild(saveRow);
+  
+  el('pe_save').addEventListener('click', async ()=>{
+    const newP = {
+      id: p ? p.id : Math.max(0, ...products.map(x=>x.id)) + 1,
+      name: el('pe_name').value.trim(),
+      price: parseInt(el('pe_price').value)||0,
+      img: el('pe_img').value.trim(),
+      category: el('pe_category').value,
+      subcategory: el('pe_subcategory').value || undefined,
+      caliber: el('pe_caliber').value.trim() || undefined,
+      description: el('pe_desc').value.trim(),
+      attachments: currentAttach
+    };
+    if(!newP.name || !newP.price || !newP.category) return alert('Заполните название, цену и категорию');
+    
+    if(p) {
+      const idx = products.findIndex(x=>x.id===p.id);
+      if(idx>=0) products[idx] = newP;
+    } else {
+      products.push(newP);
     }
     
-    categories.attachTypes.push(name);
-    el('newAttachType').value = '';
-    
-    renderAttachTypes();
-    alert('Тип обвеса добавлен!');
-}
-
-async function deleteAttachType(index) {
-    if (confirm('Удалить тип обвеса?')) {
-        categories.attachTypes.splice(index, 1);
-        renderAttachTypes();
-        alert('Тип обвеса удален!');
+    const saved = await saveJSON(KEY_PRODUCTS, products);
+    if(saved) { 
+      hideModal('productModalEdit'); 
+      renderSellerProducts(); 
+      renderProducts(); 
+    } else {
+      alert('Ошибка сохранения');
     }
+  });
+  
+  showModal('productModalEdit');
 }
 
-// 🚀 ЗАПУСК ПРИЛОЖЕНИЯ
-async function init() {
-    console.log('Запуск магазина...');
-    
-    // Загружаем данные из JSONBin
-    await loadFromJSONBin();
-    
-    // Рендерим интерфейс
-    renderCategoryFilter();
-    renderProducts();
-    updateCartUI();
-    
-    // Показываем кнопку "Мои заказы" если пользователь вошел
-    if (currentUser) {
-        el('btnMyOrders').style.display = 'inline-block';
-    }
-    
-    // Обработчики кнопок
-    el('btnCart').onclick = () => togglePanel('cartPanel');
-    el('btnLogin').onclick = () => togglePanel('loginPanel');
-    el('btnSeller').onclick = () => togglePanel('sellerPanel');
-    el('btnCheckout').onclick = checkout;
-    el('btnSignIn').onclick = handleLogin;
-    el('btnSellerLogin').onclick = handleSellerLogin;
-    el('btnNewProduct').onclick = createNewProduct;
-    
-    // Кнопки категорий
-    el('btnAddMainCat').onclick = addMainCategory;
-    el('btnAddSubCat').onclick = addSubCategory;
-    el('btnAddAttachType').onclick = addAttachType;
-    
-    // Закрытие по клику на overlay
-    el('overlay').onclick = closeAllPanels;
-    
-    console.log('✅ Магазин запущен!');
+/* Seller Categories */
+function renderSellerCategories(){
+  // Main cats
+  const mainList = el('mainCategoriesList'); mainList.innerHTML='';
+  cats.mains.forEach((m,idx)=>{
+    const d = document.createElement('div'); d.className='list-item';
+    d.innerHTML = `<div>${escapeHtml(m.title)}</div><div><button class="ghost" data-del-main="${idx}">❌</button></div>`;
+    mainList.appendChild(d);
+    d.querySelector(`button[data-del-main="${idx}"]`).addEventListener('click', async ()=>{ 
+      if(confirm('Удалить категорию?')){ 
+        cats.mains.splice(idx,1); 
+        const saved = await saveJSON(KEY_CATS, cats);
+        if(saved) renderSellerCategories(); 
+        else alert('Ошибка удаления');
+      } 
+    });
+  });
+  
+  // Subcats
+  const subSel = el('subForMain'); subSel.innerHTML='<option value="">Выберите категорию</option>';
+  cats.mains.forEach(m=>{ const o = document.createElement('option'); o.value=m.id; o.textContent=m.title; subSel.appendChild(o); });
+  subSel.addEventListener('change', ()=> renderSubcatsList());
+  function renderSubcatsList(){
+    const mainId = subSel.value;
+    const list = el('subCatsList'); list.innerHTML='';
+    if(!mainId) return;
+    const subs = cats.subs[mainId] || [];
+    subs.forEach((sc,idx)=>{
+      const d = document.createElement('div'); d.className='list-item';
+      d.innerHTML = `<div>${escapeHtml(sc.title)}</div><div><button class="ghost" data-del-sub="${mainId},${idx}">❌</button></div>`;
+      list.appendChild(d);
+      d.querySelector(`button[data-del-sub="${mainId},${idx}"]`).addEventListener('click', async ()=>{ 
+        if(confirm('Удалить подкатегорию?')){ 
+          cats.subs[mainId].splice(idx,1); 
+          const saved = await saveJSON(KEY_CATS, cats);
+          if(saved) renderSubcatsList(); 
+          else alert('Ошибка удаления');
+        } 
+      });
+    });
+  }
+  
+  // Attach types
+  const attachList = el('attachTypesList'); attachList.innerHTML='';
+  cats.attachTypes.forEach((t,idx)=>{
+    const d = document.createElement('div'); d.className='list-item';
+    d.innerHTML = `<div>${escapeHtml(t)}</div><div><button class="ghost" data-del-attach="${idx}">❌</button></div>`;
+    attachList.appendChild(d);
+    d.querySelector(`button[data-del-attach="${idx}"]`).addEventListener('click', async ()=>{ 
+      if(confirm('Удалить тип обвеса?')){ 
+        cats.attachTypes.splice(idx,1); 
+        const saved = await saveJSON(KEY_CATS, cats);
+        if(saved) renderSellerCategories(); 
+        else alert('Ошибка удаления');
+      } 
+    });
+  });
 }
 
-// 📱 ЗАГРУЗКА
-document.addEventListener('DOMContentLoaded', init);
+el('btnAddMainCat').addEventListener('click', async ()=>{
+  const name = el('newMainCat').value.trim(); if(!name) return;
+  const id = slug(name);
+  if(cats.mains.find(m=>m.id===id)) return alert('Категория уже есть');
+  cats.mains.push({id, title:name});
+  const saved = await saveJSON(KEY_CATS, cats);
+  if(saved) { el('newMainCat').value=''; renderSellerCategories(); renderCategoryFilter(); } 
+  else alert('Ошибка сохранения');
+});
 
-// 📝 ВРЕМЕННЫЕ ФУНКЦИИ (для демо)
-function editProduct(id) {
-    alert('Редактирование товара ' + id + ' (в разработке)');
+el('btnAddSubCat').addEventListener('click', async ()=>{
+  const mainId = el('subForMain').value, name = el('newSubCat').value.trim();
+  if(!mainId || !name) return;
+  const id = slug(name);
+  if(!cats.subs[mainId]) cats.subs[mainId] = [];
+  if(cats.subs[mainId].find(s=>s.id===id)) return alert('Подкатегория уже есть');
+  cats.subs[mainId].push({id, title:name});
+  const saved = await saveJSON(KEY_CATS, cats);
+  if(saved) { el('newSubCat').value=''; renderSubcatsList(); renderCategoryFilter(); } 
+  else alert('Ошибка сохранения');
+});
+
+el('btnAddAttachType').addEventListener('click', async ()=>{
+  const name = el('newAttachType').value.trim(); if(!name) return;
+  if(cats.attachTypes.includes(name)) return alert('Тип уже есть');
+  cats.attachTypes.push(name);
+  const saved = await saveJSON(KEY_CATS, cats);
+  if(saved) { el('newAttachType').value=''; renderSellerCategories(); } 
+  else alert('Ошибка сохранения');
+});
+
+/* -------------------------
+   Utils
+   ------------------------- */
+function escapeHtml(unsafe){ if(!unsafe) return ''; return unsafe.toString().replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;"); }
+function getCatTitle(id){ const m = cats.mains.find(m=>m.id===id); return m?m.title:''; }
+function getSubTitle(mainId, subId){ const m = cats.subs[mainId]; if(!m) return ''; const s = m.find(s=>s.id===subId); return s?s.title:''; }
+
+/* -------------------------
+   Init
+   ------------------------- */
+async function init(){
+  await initializeData();
+  renderCategoryFilter();
+  renderProducts();
+  updateCartUI();
+  updateUserUI();
 }
 
-function openProductView(id) {
-    alert('Просмотр товара ' + id + ' (в разработке)');
-}</script>
-
+init();
+</script>
 </body>
 </html>
