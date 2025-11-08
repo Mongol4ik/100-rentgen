@@ -1,0 +1,850 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Ставки на бои - 100 Рентген</title>
+<style>
+  :root{
+    --accent:#ff9800;
+    --bg:#850000;
+    --panel-bg:rgba(18,18,18,0.96);
+    --muted:#9aa;
+    --card:#101010;
+    --glass: rgba(255,255,255,0.03);
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%;margin:0;font-family:Inter,system-ui,Arial,sans-serif;background:url('https://i.imgur.com/Z1OWJQa.png') center/cover fixed;color:#fff}
+  a{color:inherit}
+  button,input,select,textarea{font:inherit}
+  button{cursor:pointer}
+
+  header{display:flex;justify-content:space-between;align-items:center;padding:12px 18px;background:linear-gradient(180deg,rgba(0,0,0,0.6),rgba(0,0,0,0.2));gap:12px;position:sticky;top:0;z-index:40}
+  .brand{display:flex;flex-direction:column}
+  .brand h1{margin:0;font-size:18px}
+  .controls{display:flex;gap:8px}
+
+  .container{padding:18px;max-width:1200px;margin:0 auto}
+  
+  .panel{background:var(--panel-bg);padding:16px;border-radius:10px;border:1px solid var(--glass);margin-bottom:18px}
+  
+  .btn{background:var(--accent);color:#000;padding:8px 16px;border-radius:8px;border:none;text-decoration:none;display:inline-block}
+  .ghost{background:transparent;border:1px solid var(--glass);color:#fff;padding:6px 12px;border-radius:6px}
+  
+  .fight-card{background:var(--card);border:1px solid var(--glass);padding:16px;border-radius:8px;margin-bottom:12px}
+  .fight-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}
+  .fighters{display:flex;justify-content:space-between;align-items:center;gap:20px;margin:20px 0}
+  .fighter{text-align:center;flex:1;padding:12px;border:2px solid transparent;border-radius:8px;cursor:pointer;transition:all 0.2s}
+  .fighter.selected{border-color:var(--accent);background:rgba(255,152,0,0.1)}
+  .fighter.coefficient{font-size:24px;font-weight:bold;color:var(--accent);margin:8px 0}
+  .vs{font-size:18px;font-weight:bold;color:var(--muted)}
+  
+  .bet-form{display:none;margin-top:16px;padding:16px;background:rgba(255,255,255,0.05);border-radius:8px}
+  .form-row{display:flex;gap:12px;margin-bottom:12px;align-items:center}
+  input,select{width:100%;padding:8px;border-radius:6px;border:1px solid #222;background:#080808;color:#fff}
+  
+  .bets-list{margin-top:20px}
+  .bet-item{background:var(--card);border:1px solid var(--glass);padding:12px;border-radius:8px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center}
+  .bet-info{flex:1}
+  .bet-amount{font-weight:bold;color:var(--accent)}
+  .bet-status{padding:4px 8px;border-radius:4px;font-size:12px;margin-left:8px}
+  .status-pending{background:rgba(255,193,7,0.2);color:#ffc107}
+  .status-accepted{background:rgba(76,175,80,0.2);color:#4caf50}
+  .status-rejected{background:rgba(244,67,54,0.2);color:#f44336}
+  .status-won{background:rgba(76,175,80,0.3);color:#4caf50;font-weight:bold}
+  .status-lost{background:rgba(244,67,54,0.3);color:#f44336}
+  
+  .tabs{display:flex;gap:8px;margin-bottom:16px;border-bottom:1px solid var(--glass);padding-bottom:8px}
+  .tab{padding:8px 16px;border-radius:6px;cursor:pointer;border:none;background:transparent;color:var(--muted)}
+  .tab.active{background:var(--accent);color:#000}
+  
+  .admin-section{margin-top:24px;padding-top:24px;border-top:1px solid var(--glass)}
+  
+  .small-muted{font-size:12px;color:var(--muted)}
+  .muted{color:var(--muted)}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="brand">
+    <h1>🎲 Ставки на бои - 100 Рентген</h1>
+    <div class="muted">Система ставок на исходы боев</div>
+  </div>
+  <div class="controls">
+    <button id="btnLogin" class="ghost">Вход</button>
+    <button id="btnMyBets" class="ghost" style="display:none">Мои ставки</button>
+    <button id="btnAdmin" class="ghost">Панель админа</button>
+    <a href="index.html" class="btn">← В магазин</a>
+  </div>
+</header>
+
+<div class="container">
+  <!-- Вкладки -->
+  <div class="tabs">
+    <button class="tab active" data-tab="fights">Активные бои</button>
+    <button class="tab" data-tab="mybets">Мои ставки</button>
+    <button class="tab" data-tab="history">История боев</button>
+  </div>
+
+  <!-- Активные бои -->
+  <div id="fightsTab" class="tab-content">
+    <div class="panel">
+      <h3>🚨 Активные бои</h3>
+      <div id="activeFightsList"></div>
+    </div>
+  </div>
+
+  <!-- Мои ставки -->
+  <div id="mybetsTab" class="tab-content" style="display:none">
+    <div class="panel">
+      <h3>📊 Мои ставки</h3>
+      <div id="myBetsList"></div>
+    </div>
+  </div>
+
+  <!-- История боев -->
+  <div id="historyTab" class="tab-content" style="display:none">
+    <div class="panel">
+      <h3>📜 История боев</h3>
+      <div id="finishedFightsList"></div>
+    </div>
+  </div>
+
+  <!-- Панель админа -->
+  <div id="adminPanel" class="panel" style="display:none">
+    <h3>👑 Панель админа ставок</h3>
+    
+    <div class="tabs">
+      <button class="tab active" data-admin-tab="manageFights">Управление боями</button>
+      <button class="tab" data-admin-tab="manageBets">Управление ставками</button>
+      <button class="tab" data-admin-tab="createFight">Создать бой</button>
+    </div>
+
+    <!-- Управление боями -->
+    <div id="manageFightsTab" class="admin-tab-content">
+      <h4>Активные бои для управления</h4>
+      <div id="adminFightsList"></div>
+    </div>
+
+    <!-- Управление ставками -->
+    <div id="manageBetsTab" class="admin-tab-content" style="display:none">
+      <h4>Все ставки</h4>
+      <div id="allBetsList"></div>
+    </div>
+
+    <!-- Создание боя -->
+    <div id="createFightTab" class="admin-tab-content" style="display:none">
+      <h4>Создать новый бой</h4>
+      <div class="form-row">
+        <input type="text" id="newFightTitle" placeholder="Название боя (например: Сталкер vs Мутант)" style="flex:2">
+        <input type="datetime-local" id="newFightDate" style="flex:1">
+      </div>
+      <div class="form-row">
+        <input type="text" id="newFighter1" placeholder="Боец 1" style="flex:1">
+        <input type="number" id="newCoefficient1" placeholder="Коэффициент" step="0.1" min="1" style="flex:1">
+      </div>
+      <div class="form-row">
+        <input type="text" id="newFighter2" placeholder="Боец 2" style="flex:1">
+        <input type="number" id="newCoefficient2" placeholder="Коэффициент" step="0.1" min="1" style="flex:1">
+      </div>
+      <button id="btnCreateFight" class="btn">Создать бой</button>
+    </div>
+  </div>
+
+  <!-- Форма входа -->
+  <div id="loginPanel" class="panel" style="display:none">
+    <h3>Вход в систему ставок</h3>
+    <div class="form-row">
+      <input id="betUsername" placeholder="Имя пользователя">
+      <input id="betPassword" placeholder="Пароль" type="password">
+    </div>
+    <div class="form-row">
+      <button id="btnBetLogin" class="btn">Войти</button>
+      <button id="btnBetRegister" class="ghost">Регистрация</button>
+      <button class="ghost" onclick="hideLogin()">Отмена</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// Конфигурация JSONBin (используем те же ключи что и в магазине)
+const JSONBIN_BASE_URL = 'https://api.jsonbin.io/v3/b';
+const JSONBIN_MASTER_KEY = '$2a$10$wTicXNpl/tYWk2p1tuUuC.w87l4en0x8a9e7STVUKFIfFQnaZFdLC';
+const JSONBIN_ACCESS_KEY = '$2a$10$.twuYFU3QYQ1ZXPY.uyfB.7EryqBOUndWb3UbhjCfknwxJvHKo2LG';
+
+const JSONBIN_IDS = {
+  USERS: '6904f5d843b1c97be98eff3a', // Те же что в магазине
+  BETS: '6904f5d843b1c97be98eff3b', // НОВЫЙ - для ставок
+  FIGHTS: '6904f5d843b1c97be98eff3c' // НОВЫЙ - для боев
+};
+
+// Ключи localStorage
+const KEY_CURRENT_USER = 'currentUser';
+const KEY_USERS = 'users_v_final_v1';
+const KEY_BETS = 'bets_v1';
+const KEY_FIGHTS = 'fights_v1';
+
+// Данные по умолчанию
+const DEFAULT_FIGHTS = [
+  {
+    id: 1,
+    title: "Опытный сталкер vs Кровосос",
+    fighter1: { name: "Опытный сталкер", coefficient: 1.5 },
+    fighter2: { name: "Кровосос", coefficient: 2.5 },
+    date: "2024-01-20 20:00",
+    status: "active",
+    winner: null
+  },
+  {
+    id: 2,
+    title: "Новичок Зоны vs Псевдособака",
+    fighter1: { name: "Новичок Зоны", coefficient: 2.8 },
+    fighter2: { name: "Псевдособака", coefficient: 1.4 },
+    date: "2024-01-21 18:00",
+    status: "active", 
+    winner: null
+  }
+];
+
+const DEFAULT_BETS = [];
+
+let currentUser = localStorage.getItem(KEY_CURRENT_USER);
+let fights = [];
+let bets = [];
+let users = {};
+let selectedFight = null;
+let selectedFighter = null;
+
+// Утилиты
+const el = id => document.getElementById(id);
+
+// JSONBin функции (аналогичные магазину)
+async function jsonbinFetch(binId) {
+  const url = `${JSONBIN_BASE_URL}/${binId}/latest`;
+  const headers = {
+    'Content-Type': 'application/json',
+    'X-Master-Key': JSONBIN_MASTER_KEY,
+    'X-Access-Key': JSONBIN_ACCESS_KEY
+  };
+  
+  try {
+    const response = await fetch(url, { headers });
+    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+    const data = await response.json();
+    return data.record;
+  } catch (error) {
+    console.error('JSONBin fetch error:', error);
+    const fallback = localStorage.getItem(`fallback_${binId}`);
+    return fallback ? JSON.parse(fallback) : null;
+  }
+}
+
+async function jsonbinUpdate(binId, data) {
+  const url = `${JSONBIN_BASE_URL}/${binId}`;
+  const headers = {
+    'Content-Type': 'application/json',
+    'X-Master-Key': JSONBIN_MASTER_KEY,
+    'X-Access-Key': JSONBIN_ACCESS_KEY
+  };
+  
+  try {
+    const response = await fetch(url, {
+      method: 'PUT',
+      headers: headers,
+      body: JSON.stringify(data)
+    });
+    
+    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+    const result = await response.json();
+    localStorage.setItem(`fallback_${binId}`, JSON.stringify(data));
+    return result.record;
+  } catch (error) {
+    console.error('JSONBin update error:', error);
+    localStorage.setItem(`fallback_${binId}`, JSON.stringify(data));
+    return data;
+  }
+}
+
+async function loadJSON(key, fallback) {
+  try {
+    let binId;
+    switch(key) {
+      case KEY_USERS: binId = JSONBIN_IDS.USERS; break;
+      case KEY_BETS: binId = JSONBIN_IDS.BETS; break;
+      case KEY_FIGHTS: binId = JSONBIN_IDS.FIGHTS; break;
+      default: return JSON.parse(JSON.stringify(fallback));
+    }
+    
+    const data = await jsonbinFetch(binId);
+    return data || JSON.parse(JSON.stringify(fallback));
+  } catch(e) {
+    console.error('Load error:', e);
+    return JSON.parse(JSON.stringify(fallback));
+  }
+}
+
+async function saveJSON(key, val) {
+  try {
+    let binId;
+    switch(key) {
+      case KEY_USERS: binId = JSONBIN_IDS.USERS; break;
+      case KEY_BETS: binId = JSONBIN_IDS.BETS; break;
+      case KEY_FIGHTS: binId = JSONBIN_IDS.FIGHTS; break;
+      default: return;
+    }
+    
+    await jsonbinUpdate(binId, val);
+    return true;
+  } catch(e) {
+    console.error('Save error:', e);
+    return false;
+  }
+}
+
+// Инициализация данных
+async function initializeData() {
+  [users, bets, fights] = await Promise.all([
+    loadJSON(KEY_USERS, {}),
+    loadJSON(KEY_BETS, DEFAULT_BETS),
+    loadJSON(KEY_FIGHTS, DEFAULT_FIGHTS)
+  ]);
+  
+  updateUI();
+  renderActiveFights();
+  renderMyBets();
+  renderFinishedFights();
+}
+
+// Рендер активных боев
+function renderActiveFights() {
+  const list = el('activeFightsList');
+  const activeFights = fights.filter(f => f.status === 'active');
+  
+  if (activeFights.length === 0) {
+    list.innerHTML = '<div class="muted">Нет активных боев</div>';
+    return;
+  }
+  
+  list.innerHTML = activeFights.map(fight => `
+    <div class="fight-card" data-fight-id="${fight.id}">
+      <div class="fight-header">
+        <h4>${escapeHtml(fight.title)}</h4>
+        <div class="muted">${new Date(fight.date).toLocaleString()}</div>
+      </div>
+      
+      <div class="fighters">
+        <div class="fighter" data-fight-id="${fight.id}" data-fighter="fighter1">
+          <div class="fighter-name">${escapeHtml(fight.fighter1.name)}</div>
+          <div class="fighter coefficient">${fight.fighter1.coefficient}x</div>
+          <div class="small-muted">Коэффициент</div>
+        </div>
+        
+        <div class="vs">VS</div>
+        
+        <div class="fighter" data-fight-id="${fight.id}" data-fighter="fighter2">
+          <div class="fighter-name">${escapeHtml(fight.fighter2.name)}</div>
+          <div class="fighter coefficient">${fight.fighter2.coefficient}x</div>
+          <div class="small-muted">Коэффициент</div>
+        </div>
+      </div>
+      
+      <div class="bet-form" id="betForm-${fight.id}">
+        <div class="form-row">
+          <input type="number" id="betAmount-${fight.id}" placeholder="Сумма ставки" min="1">
+          <button class="btn" onclick="placeBet(${fight.id})">Сделать ставку</button>
+          <button class="ghost" onclick="cancelBet()">Отмена</button>
+        </div>
+        <div class="small-muted" id="potentialWin-${fight.id}"></div>
+      </div>
+    </div>
+  `).join('');
+  
+  // Обработчики выбора бойца
+  document.querySelectorAll('.fighter').forEach(fighterEl => {
+    fighterEl.addEventListener('click', function() {
+      if (!currentUser) {
+        showLogin();
+        return;
+      }
+      
+      const fightId = parseInt(this.dataset.fightId);
+      const fighter = this.dataset.fighter;
+      
+      selectedFight = fights.find(f => f.id === fightId);
+      selectedFighter = fighter;
+      
+      // Сброс предыдущего выбора
+      document.querySelectorAll('.fighter').forEach(f => f.classList.remove('selected'));
+      document.querySelectorAll('.bet-form').forEach(f => f.style.display = 'none');
+      
+      // Установка нового выбора
+      this.classList.add('selected');
+      const betForm = el(`betForm-${fightId}`);
+      betForm.style.display = 'block';
+      
+      // Обновление потенциального выигрыша
+      updatePotentialWin(fightId, fighter);
+    });
+  });
+}
+
+// Обновление потенциального выигрыша
+function updatePotentialWin(fightId, fighter) {
+  const fight = fights.find(f => f.id === fightId);
+  const amountInput = el(`betAmount-${fightId}`);
+  const potentialWinEl = el(`potentialWin-${fightId}`);
+  
+  amountInput.addEventListener('input', function() {
+    const amount = parseFloat(this.value) || 0;
+    const coefficient = fighter === 'fighter1' ? fight.fighter1.coefficient : fight.fighter2.coefficient;
+    const potentialWin = amount * coefficient;
+    potentialWinEl.textContent = `Потенциальный выигрыш: ${potentialWin.toFixed(2)} 💰`;
+  });
+}
+
+// Размещение ставки
+async function placeBet(fightId) {
+  const amountInput = el(`betAmount-${fightId}`);
+  const amount = parseFloat(amountInput.value);
+  
+  if (!amount || amount < 1) {
+    alert('Введите корректную сумму ставки');
+    return;
+  }
+  
+  const fight = fights.find(f => f.id === fightId);
+  const coefficient = selectedFighter === 'fighter1' ? fight.fighter1.coefficient : fight.fighter2.coefficient;
+  const fighterName = selectedFighter === 'fighter1' ? fight.fighter1.name : fight.fighter2.name;
+  
+  const newBet = {
+    id: Date.now(),
+    userId: currentUser,
+    fightId: fightId,
+    fighter: selectedFighter,
+    fighterName: fighterName,
+    amount: amount,
+    coefficient: coefficient,
+    potentialWin: amount * coefficient,
+    status: 'pending',
+    date: new Date().toLocaleString(),
+    fightTitle: fight.title
+  };
+  
+  bets.push(newBet);
+  const saved = await saveJSON(KEY_BETS, bets);
+  
+  if (saved) {
+    alert(`Ставка на ${fighterName} размещена! Сумма: ${amount} 💰`);
+    cancelBet();
+    renderMyBets();
+  } else {
+    alert('Ошибка при размещении ставки');
+  }
+}
+
+// Отмена ставки
+function cancelBet() {
+  selectedFight = null;
+  selectedFighter = null;
+  document.querySelectorAll('.fighter').forEach(f => f.classList.remove('selected'));
+  document.querySelectorAll('.bet-form').forEach(f => f.style.display = 'none');
+}
+
+// Рендер моих ставок
+function renderMyBets() {
+  const list = el('myBetsList');
+  const myBets = bets.filter(bet => bet.userId === currentUser);
+  
+  if (myBets.length === 0) {
+    list.innerHTML = '<div class="muted">У вас нет ставок</div>';
+    return;
+  }
+  
+  // Сортируем по дате (новые сверху)
+  myBets.sort((a, b) => b.id - a.id);
+  
+  list.innerHTML = myBets.map(bet => {
+    const fight = fights.find(f => f.id === bet.fightId);
+    const statusClass = `status-${bet.status}`;
+    const statusText = getStatusText(bet.status);
+    
+    let resultInfo = '';
+    if (fight && fight.status === 'finished') {
+      if (bet.fighter === fight.winner) {
+        resultInfo = `<div class="bet-status status-won">🏆 ВЫИГРЫШ: ${bet.potentialWin} 💰</div>`;
+      } else {
+        resultInfo = `<div class="bet-status status-lost">💸 ПРОИГРЫШ</div>`;
+      }
+    }
+    
+    return `
+      <div class="bet-item">
+        <div class="bet-info">
+          <strong>${escapeHtml(bet.fightTitle)}</strong>
+          <div class="muted">Ставка на: ${escapeHtml(bet.fighterName)}</div>
+          <div>Сумма: <span class="bet-amount">${bet.amount} 💰</span> 
+                (коэф. ${bet.coefficient}x)</div>
+        </div>
+        <div>
+          <div class="bet-status ${statusClass}">${statusText}</div>
+          ${resultInfo}
+          <div class="small-muted">${bet.date}</div>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+// Рендер завершенных боев
+function renderFinishedFights() {
+  const list = el('finishedFightsList');
+  const finishedFights = fights.filter(f => f.status === 'finished');
+  
+  if (finishedFights.length === 0) {
+    list.innerHTML = '<div class="muted">Нет завершенных боев</div>';
+    return;
+  }
+  
+  list.innerHTML = finishedFights.map(fight => {
+    const winner = fight.winner === 'fighter1' ? fight.fighter1.name : fight.fighter2.name;
+    return `
+      <div class="fight-card">
+        <div class="fight-header">
+          <h4>${escapeHtml(fight.title)}</h4>
+          <div class="muted">${new Date(fight.date).toLocaleString()}</div>
+        </div>
+        <div class="fighters">
+          <div class="fighter ${fight.winner === 'fighter1' ? 'selected' : ''}">
+            <div class="fighter-name">${escapeHtml(fight.fighter1.name)}</div>
+            <div class="fighter coefficient">${fight.fighter1.coefficient}x</div>
+          </div>
+          <div class="vs">VS</div>
+          <div class="fighter ${fight.winner === 'fighter2' ? 'selected' : ''}">
+            <div class="fighter-name">${escapeHtml(fight.fighter2.name)}</div>
+            <div class="fighter coefficient">${fight.fighter2.coefficient}x</div>
+          </div>
+        </div>
+        <div style="text-align:center;margin-top:12px">
+          <div class="bet-status status-won">🏆 ПОБЕДИТЕЛЬ: ${escapeHtml(winner)}</div>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+// Админ панель
+function renderAdminFights() {
+  const list = el('adminFightsList');
+  const activeFights = fights.filter(f => f.status === 'active');
+  
+  list.innerHTML = activeFights.map(fight => `
+    <div class="fight-card">
+      <div class="fight-header">
+        <h4>${escapeHtml(fight.title)}</h4>
+        <div class="muted">${new Date(fight.date).toLocaleString()}</div>
+      </div>
+      <div class="fighters">
+        <div class="fighter">
+          <div class="fighter-name">${escapeHtml(fight.fighter1.name)}</div>
+          <div class="coefficient">${fight.fighter1.coefficient}x</div>
+        </div>
+        <div class="vs">VS</div>
+        <div class="fighter">
+          <div class="fighter-name">${escapeHtml(fight.fighter2.name)}</div>
+          <div class="coefficient">${fight.fighter2.coefficient}x</div>
+        </div>
+      </div>
+      <div style="display:flex;gap:8px;margin-top:12px">
+        <button class="btn" onclick="setWinner(${fight.id}, 'fighter1')">${escapeHtml(fight.fighter1.name)} победил</button>
+        <button class="btn" onclick="setWinner(${fight.id}, 'fighter2')">${escapeHtml(fight.fighter2.name)} победил</button>
+        <button class="ghost" onclick="cancelFight(${fight.id})">Отменить бой</button>
+      </div>
+    </div>
+  `).join('');
+}
+
+function renderAllBets() {
+  const list = el('allBetsList');
+  
+  if (bets.length === 0) {
+    list.innerHTML = '<div class="muted">Нет ставок</div>';
+    return;
+  }
+  
+  // Сортируем по дате
+  bets.sort((a, b) => b.id - a.id);
+  
+  list.innerHTML = bets.map(bet => {
+    const statusClass = `status-${bet.status}`;
+    const statusText = getStatusText(bet.status);
+    const fight = fights.find(f => f.id === bet.fightId);
+    
+    let actions = '';
+    if (bet.status === 'pending') {
+      actions = `
+        <button class="btn" onclick="updateBetStatus(${bet.id}, 'accepted')">Принять</button>
+        <button class="ghost" onclick="updateBetStatus(${bet.id}, 'rejected')">Отклонить</button>
+      `;
+    }
+    
+    return `
+      <div class="bet-item">
+        <div class="bet-info">
+          <strong>${escapeHtml(bet.userId)}</strong>
+          <div class="muted">${escapeHtml(bet.fightTitle)}</div>
+          <div>Ставка на: ${escapeHtml(bet.fighterName)} - ${bet.amount} 💰 (коэф. ${bet.coefficient}x)</div>
+          <div class="small-muted">${bet.date}</div>
+        </div>
+        <div style="text-align:right">
+          <div class="bet-status ${statusClass}">${statusText}</div>
+          <div style="margin-top:8px">${actions}</div>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+// Админ функции
+async function setWinner(fightId, winner) {
+  if (!confirm(`Подтвердить победу ${winner === 'fighter1' ? fights.find(f => f.id === fightId).fighter1.name : fights.find(f => f.id === fightId).fighter2.name}?`)) {
+    return;
+  }
+  
+  const fight = fights.find(f => f.id === fightId);
+  fight.status = 'finished';
+  fight.winner = winner;
+  
+  // Автоматическое обновление статусов ставок
+  bets.forEach(bet => {
+    if (bet.fightId === fightId && bet.status === 'accepted') {
+      bet.status = bet.fighter === winner ? 'won' : 'lost';
+    }
+  });
+  
+  const [savedFights, savedBets] = await Promise.all([
+    saveJSON(KEY_FIGHTS, fights),
+    saveJSON(KEY_BETS, bets)
+  ]);
+  
+  if (savedFights && savedBets) {
+    alert('Победитель установлен! Статусы ставок обновлены.');
+    renderAdminFights();
+    renderAllBets();
+    renderActiveFights();
+    renderMyBets();
+    renderFinishedFights();
+  }
+}
+
+async function cancelFight(fightId) {
+  if (!confirm('Отменить этот бой? Все ставки будут отклонены.')) {
+    return;
+  }
+  
+  const fight = fights.find(f => f.id === fightId);
+  fight.status = 'cancelled';
+  
+  // Отклоняем все ставки на этот бой
+  bets.forEach(bet => {
+    if (bet.fightId === fightId && bet.status === 'pending') {
+      bet.status = 'rejected';
+    }
+  });
+  
+  const [savedFights, savedBets] = await Promise.all([
+    saveJSON(KEY_FIGHTS, fights),
+    saveJSON(KEY_BETS, bets)
+  ]);
+  
+  if (savedFights && savedBets) {
+    alert('Бой отменен!');
+    renderAdminFights();
+    renderAllBets();
+    renderActiveFights();
+    renderMyBets();
+  }
+}
+
+async function updateBetStatus(betId, status) {
+  const bet = bets.find(b => b.id === betId);
+  if (bet) {
+    bet.status = status;
+    const saved = await saveJSON(KEY_BETS, bets);
+    if (saved) {
+      renderAllBets();
+      renderMyBets();
+    }
+  }
+}
+
+async function createNewFight() {
+  const title = el('newFightTitle').value.trim();
+  const date = el('newFightDate').value;
+  const fighter1 = el('newFighter1').value.trim();
+  const coeff1 = parseFloat(el('newCoefficient1').value);
+  const fighter2 = el('newFighter2').value.trim();
+  const coeff2 = parseFloat(el('newCoefficient2').value);
+  
+  if (!title || !date || !fighter1 || !fighter2 || !coeff1 || !coeff2) {
+    alert('Заполните все поля');
+    return;
+  }
+  
+  const newFight = {
+    id: Date.now(),
+    title: title,
+    fighter1: { name: fighter1, coefficient: coeff1 },
+    fighter2: { name: fighter2, coefficient: coeff2 },
+    date: date,
+    status: 'active',
+    winner: null
+  };
+  
+  fights.push(newFight);
+  const saved = await saveJSON(KEY_FIGHTS, fights);
+  
+  if (saved) {
+    alert('Бой создан!');
+    el('newFightTitle').value = '';
+    el('newFightDate').value = '';
+    el('newFighter1').value = '';
+    el('newCoefficient1').value = '';
+    el('newFighter2').value = '';
+    el('newCoefficient2').value = '';
+    
+    renderAdminFights();
+    renderActiveFights();
+  }
+}
+
+// Утилиты
+function escapeHtml(unsafe) {
+  if (!unsafe) return '';
+  return unsafe.toString()
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
+function getStatusText(status) {
+  const statusMap = {
+    'pending': '⏳ Ожидание',
+    'accepted': '✅ Принята', 
+    'rejected': '❌ Отклонена',
+    'won': '🏆 Выиграла',
+    'lost': '💸 Проиграла'
+  };
+  return statusMap[status] || status;
+}
+
+function updateUI() {
+  if (currentUser) {
+    el('btnLogin').style.display = 'none';
+    el('btnMyBets').style.display = 'inline-block';
+  } else {
+    el('btnLogin').style.display = 'inline-block';
+    el('btnMyBets').style.display = 'none';
+    el('adminPanel').style.display = 'none';
+  }
+}
+
+function showLogin() {
+  el('loginPanel').style.display = 'block';
+}
+
+function hideLogin() {
+  el('loginPanel').style.display = 'none';
+}
+
+// Обработчики событий
+el('btnLogin').addEventListener('click', showLogin);
+el('btnMyBets').addEventListener('click', () => switchTab('mybets'));
+el('btnAdmin').addEventListener('click', () => {
+  el('adminPanel').style.display = el('adminPanel').style.display === 'none' ? 'block' : 'none';
+  if (el('adminPanel').style.display === 'block') {
+    renderAdminFights();
+    renderAllBets();
+  }
+});
+
+el('btnBetLogin').addEventListener('click', async () => {
+  const username = el('betUsername').value.trim();
+  const password = el('betPassword').value.trim();
+  
+  users = await loadJSON(KEY_USERS, users);
+  if (!users[username] || users[username].password !== password) {
+    alert('Неверные данные');
+    return;
+  }
+  
+  currentUser = username;
+  localStorage.setItem(KEY_CURRENT_USER, username);
+  updateUI();
+  hideLogin();
+  renderMyBets();
+  alert('Вход выполнен!');
+});
+
+el('btnBetRegister').addEventListener('click', async () => {
+  const username = el('betUsername').value.trim();
+  const password = el('betPassword').value.trim();
+  
+  if (!username || !password) {
+    alert('Введите логин и пароль');
+    return;
+  }
+  
+  users = await loadJSON(KEY_USERS, users);
+  if (users[username]) {
+    alert('Пользователь уже существует');
+    return;
+  }
+  
+  users[username] = { password: password, orders: [] };
+  const saved = await saveJSON(KEY_USERS, users);
+  
+  if (saved) {
+    alert('Зарегистрировано!');
+    currentUser = username;
+    localStorage.setItem(KEY_CURRENT_USER, username);
+    updateUI();
+    hideLogin();
+  }
+});
+
+el('btnCreateFight').addEventListener('click', createNewFight);
+
+// Переключение вкладок
+function switchTab(tabName) {
+  document.querySelectorAll('.tab-content').forEach(tab => tab.style.display = 'none');
+  document.querySelectorAll('.tab').forEach(tab => tab.classList.remove('active'));
+  
+  el(`${tabName}Tab`).style.display = 'block';
+  document.querySelector(`[data-tab="${tabName}"]`).classList.add('active');
+}
+
+document.querySelectorAll('[data-tab]').forEach(tab => {
+  tab.addEventListener('click', function() {
+    switchTab(this.dataset.tab);
+  });
+});
+
+// Админ вкладки
+document.querySelectorAll('[data-admin-tab]').forEach(tab => {
+  tab.addEventListener('click', function() {
+    document.querySelectorAll('.admin-tab-content').forEach(content => content.style.display = 'none');
+    document.querySelectorAll('[data-admin-tab]').forEach(t => t.classList.remove('active'));
+    
+    el(`${this.dataset.adminTab}Tab`).style.display = 'block';
+    this.classList.add('active');
+  });
+});
+
+// Инициализация
+initializeData();
+</script>
+</body>
+</html>
