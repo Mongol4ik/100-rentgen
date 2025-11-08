@@ -1,0 +1,12 @@
+# Конфигурационные файлы с секретными данными
+config.js
+config-secret.js
+*.env
+.env.local
+
+# Системные файлы
+.DS_Store
+Thumbs.db
+
+# Логи
+*.log
