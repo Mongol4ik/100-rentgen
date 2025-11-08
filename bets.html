@@ -205,16 +205,29 @@ const KEY_SELLER_CONFIG = 'sellerConfig';
 const DEFAULT_FIGHTS = [
   {
     id: 1,
-    title: "Опытный сталкер vs Кровосос",
-    fighter1: { name: "Опытный сталкер", coefficient: 1.5 },
-    fighter2: { name: "Кровосос", coefficient: 2.5 },
+    title: "Сталкер Опытный vs Кровосос",
+    fighter1: { name: "Сталкер Опытный", coefficient: 1.8 },
+    fighter2: { name: "Кровосос", coefficient: 2.2 },
     date: "2024-01-20 20:00",
+    status: "active",
+    winner: null
+  },
+  {
+    id: 2,
+    title: "Новичок Зоны vs Псевдособака",
+    fighter1: { name: "Новичок Зоны", coefficient: 2.5 },
+    fighter2: { name: "Псевдособака", coefficient: 1.6 },
+    date: "2024-01-21 18:00",
     status: "active",
     winner: null
   }
 ];
 
 const DEFAULT_BETS = [];
+const DEFAULT_CONFIG = {
+  sellerPassword: "admin123",
+  betsAdminPassword: "bets123"
+};
 
 let currentUser = localStorage.getItem(KEY_CURRENT_USER);
 let fights = [];
@@ -311,18 +324,60 @@ async function saveJSON(key, val) {
   }
 }
 
-// Инициализация данных
+// Инициализация данных с принудительным созданием
 async function initializeData() {
-  [users, bets, fights] = await Promise.all([
-    loadJSON(KEY_USERS, {}),
-    loadJSON(KEY_BETS, DEFAULT_BETS),
-    loadJSON(KEY_FIGHTS, DEFAULT_FIGHTS)
-  ]);
+  console.log('Starting data initialization...');
   
-  updateUI();
-  renderActiveFights();
-  renderMyBets();
-  renderFinishedFights();
+  try {
+    // Загружаем данные
+    const [usersData, betsData, fightsData, configData] = await Promise.all([
+      loadJSON(KEY_USERS, {}),
+      loadJSON(KEY_BETS, DEFAULT_BETS),
+      loadJSON(KEY_FIGHTS, DEFAULT_FIGHTS),
+      loadJSON(KEY_SELLER_CONFIG, DEFAULT_CONFIG)
+    ]);
+
+    users = usersData;
+    bets = betsData || DEFAULT_BETS;
+    fights = fightsData || DEFAULT_FIGHTS;
+
+    // Если bins пустые, создаем начальные данные
+    if (!fightsData || fightsData.length === 0) {
+      console.log('Creating initial fights...');
+      fights = DEFAULT_FIGHTS;
+      await saveJSON(KEY_FIGHTS, fights);
+    }
+
+    if (!betsData || !Array.isArray(betsData)) {
+      console.log('Creating initial bets...');
+      bets = DEFAULT_BETS;
+      await saveJSON(KEY_BETS, bets);
+    }
+
+    if (!configData) {
+      console.log('Creating initial config...');
+      await saveJSON(KEY_SELLER_CONFIG, DEFAULT_CONFIG);
+    }
+
+    console.log('Data loaded:', { fights, bets, users });
+
+    updateUI();
+    renderActiveFights();
+    renderMyBets();
+    renderFinishedFights();
+    
+  } catch (error) {
+    console.error('Error initializing data:', error);
+    // Fallback на локальные данные
+    fights = DEFAULT_FIGHTS;
+    bets = DEFAULT_BETS;
+    users = {};
+    
+    updateUI();
+    renderActiveFights();
+    renderMyBets();
+    renderFinishedFights();
+  }
 }
 
 // Функция проверки ставок пользователя
@@ -338,13 +393,14 @@ function renderActiveFights() {
   const list = el('activeFightsList');
   const activeFights = fights.filter(f => f.status === 'active');
   
+  console.log('Rendering active fights:', activeFights);
+  
   if (activeFights.length === 0) {
     list.innerHTML = '<div class="muted">Нет активных боев</div>';
     return;
   }
   
   list.innerHTML = activeFights.map(fight => {
-    // Проверяем, сделал ли текущий пользователь ставку на этот бой
     const userBet = bets.find(bet => 
       bet.userId === currentUser && 
       bet.fightId === fight.id &&
@@ -404,7 +460,7 @@ function renderActiveFights() {
     `;
   }).join('');
   
-  // Обработчики кликов - только если нет ставки
+  // Обработчики кликов
   document.querySelectorAll('.fighter:not(.disabled)').forEach(fighterEl => {
     fighterEl.addEventListener('click', function() {
       if (!currentUser) {
@@ -413,8 +469,6 @@ function renderActiveFights() {
       }
       
       const fightId = parseInt(this.dataset.fightId);
-      
-      // Проверяем, не делал ли уже пользователь ставку на этот бой
       const existingBet = bets.find(bet => 
         bet.userId === currentUser && 
         bet.fightId === fightId &&
@@ -422,7 +476,7 @@ function renderActiveFights() {
       );
       
       if (existingBet) {
-        alert('Вы уже сделали ставку на этот бой! Один пользователь может сделать только одну ставку на бой.');
+        alert('Вы уже сделали ставку на этот бой!');
         return;
       }
       
@@ -447,15 +501,18 @@ function updatePotentialWin(fightId, fighter) {
   const amountInput = el(`betAmount-${fightId}`);
   const potentialWinEl = el(`potentialWin-${fightId}`);
   
-  amountInput.addEventListener('input', function() {
-    const amount = parseFloat(this.value) || 0;
+  const updateWin = () => {
+    const amount = parseFloat(amountInput.value) || 0;
     const coefficient = fighter === 'fighter1' ? fight.fighter1.coefficient : fight.fighter2.coefficient;
     const potentialWin = amount * coefficient;
     potentialWinEl.textContent = `Потенциальный выигрыш: ${potentialWin.toFixed(2)} 💰`;
-  });
+  };
+  
+  amountInput.addEventListener('input', updateWin);
+  updateWin();
 }
 
-// Функция размещения ставки - с проверкой дублирования
+// Размещение ставки
 async function placeBet(fightId) {
   const amountInput = el(`betAmount-${fightId}`);
   const amount = parseFloat(amountInput.value);
@@ -466,10 +523,6 @@ async function placeBet(fightId) {
   }
   
   const fight = fights.find(f => f.id === fightId);
-  const coefficient = selectedFighter === 'fighter1' ? fight.fighter1.coefficient : fight.fighter2.coefficient;
-  const fighterName = selectedFighter === 'fighter1' ? fight.fighter1.name : fight.fighter2.name;
-  
-  // ПРОВЕРКА: не ставил ли уже пользователь на этот бой
   const existingBet = bets.find(bet => 
     bet.userId === currentUser && 
     bet.fightId === fightId &&
@@ -477,9 +530,12 @@ async function placeBet(fightId) {
   );
   
   if (existingBet) {
-    alert('Вы уже сделали ставку на этот бой! Можно ставить только один раз на каждый бой.');
+    alert('Вы уже сделали ставку на этот бой!');
     return;
   }
+  
+  const coefficient = selectedFighter === 'fighter1' ? fight.fighter1.coefficient : fight.fighter2.coefficient;
+  const fighterName = selectedFighter === 'fighter1' ? fight.fighter1.name : fight.fighter2.name;
   
   const newBet = {
     id: Date.now(),
@@ -499,7 +555,7 @@ async function placeBet(fightId) {
   const saved = await saveJSON(KEY_BETS, bets);
   
   if (saved) {
-    alert(`Ставка на ${fighterName} размещена! Сумма: ${amount} 💰\nОжидайте подтверждения админа.`);
+    alert(`Ставка на ${fighterName} размещена! Сумма: ${amount} 💰`);
     cancelBet();
     renderActiveFights();
     renderMyBets();
@@ -545,8 +601,7 @@ function renderMyBets() {
         <div class="bet-info">
           <strong>${escapeHtml(bet.fightTitle)}</strong>
           <div class="muted">Ставка на: ${escapeHtml(bet.fighterName)}</div>
-          <div>Сумма: <span class="bet-amount">${bet.amount} 💰</span> 
-                (коэф. ${bet.coefficient}x)</div>
+          <div>Сумма: <span class="bet-amount">${bet.amount} 💰</span> (коэф. ${bet.coefficient}x)</div>
           <div>Потенциальный выигрыш: ${bet.potentialWin} 💰</div>
         </div>
         <div>
@@ -595,7 +650,7 @@ function renderFinishedFights() {
   }).join('');
 }
 
-// Админ панель
+// Админ функции
 function closeAdminPanel() {
   el('adminPanel').style.display = 'none';
   el('betsAdminLoginArea').style.display = 'block';
@@ -605,8 +660,7 @@ function closeAdminPanel() {
 
 el('btnBetsAdminLogin').addEventListener('click', async () => {
   const password = el('betsAdminPass').value;
-  
-  const config = await loadJSON(KEY_SELLER_CONFIG, { sellerPassword: 'admin123', betsAdminPassword: 'bets123' });
+  const config = await loadJSON(KEY_SELLER_CONFIG, DEFAULT_CONFIG);
   
   if (password === config.betsAdminPassword) {
     el('betsAdminLoginArea').style.display = 'none';
@@ -627,6 +681,11 @@ el('btnAdmin').addEventListener('click', () => {
 function renderAdminFights() {
   const list = el('adminFightsList');
   const activeFights = fights.filter(f => f.status === 'active');
+  
+  if (activeFights.length === 0) {
+    list.innerHTML = '<div class="muted">Нет активных боев для управления</div>';
+    return;
+  }
   
   list.innerHTML = activeFights.map(fight => `
     <div class="fight-card">
@@ -654,7 +713,6 @@ function renderAdminFights() {
   `).join('');
 }
 
-// Функция отмены боя - ИСПРАВЛЕННАЯ
 async function cancelFight(fightId) {
   if (!confirm('Отменить этот бой? Все ставки будут отклонены.')) {
     return;
@@ -665,7 +723,7 @@ async function cancelFight(fightId) {
   
   fight.status = 'cancelled';
   
-  // Отклоняем ВСЕ ставки на этот бой (и pending и accepted)
+  // Отклоняем все ставки на этот бой
   bets.forEach(bet => {
     if (bet.fightId === fightId && (bet.status === 'pending' || bet.status === 'accepted')) {
       bet.status = 'rejected';
@@ -684,20 +742,21 @@ async function cancelFight(fightId) {
     renderActiveFights();
     renderMyBets();
     renderFinishedFights();
-  } else {
-    alert('Ошибка при отмене боя');
   }
 }
 
 async function setWinner(fightId, winner) {
-  if (!confirm(`Подтвердить победу ${winner === 'fighter1' ? fights.find(f => f.id === fightId).fighter1.name : fights.find(f => f.id === fightId).fighter2.name}?`)) {
+  const fight = fights.find(f => f.id === fightId);
+  const winnerName = winner === 'fighter1' ? fight.fighter1.name : fight.fighter2.name;
+  
+  if (!confirm(`Подтвердить победу ${winnerName}?`)) {
     return;
   }
   
-  const fight = fights.find(f => f.id === fightId);
   fight.status = 'finished';
   fight.winner = winner;
   
+  // Обновляем статусы ставок
   bets.forEach(bet => {
     if (bet.fightId === fightId && bet.status === 'accepted') {
       bet.status = bet.fighter === winner ? 'won' : 'lost';
@@ -710,7 +769,7 @@ async function setWinner(fightId, winner) {
   ]);
   
   if (savedFights && savedBets) {
-    alert('Победитель установлен! Статусы ставок обновлены.');
+    alert(`Победитель установлен: ${winnerName}!`);
     renderAdminFights();
     renderAllBets();
     renderActiveFights();
@@ -719,7 +778,6 @@ async function setWinner(fightId, winner) {
   }
 }
 
-// Обновленная функция рендера всех ставок в админке
 function renderAllBets() {
   const list = el('allBetsList');
   
@@ -741,15 +799,6 @@ function renderAllBets() {
         <button class="btn" onclick="updateBetStatus(${bet.id}, 'accepted')">Принять</button>
         <button class="ghost" onclick="updateBetStatus(${bet.id}, 'rejected')">Отклонить</button>
       `;
-    } else if (bet.status === 'accepted' && fight && fight.status === 'active') {
-      actions = `
-        <button class="ghost" onclick="updateBetStatus(${bet.id}, 'rejected')">Отозвать</button>
-      `;
-    }
-    
-    let fightStatus = '';
-    if (fight) {
-      fightStatus = `<div class="small-muted">Бой: ${fight.status === 'active' ? '🟢 Активен' : fight.status === 'finished' ? '🟣 Завершен' : '🔴 Отменен'}</div>`;
     }
     
     return `
@@ -759,7 +808,6 @@ function renderAllBets() {
           <div class="muted">${escapeHtml(bet.fightTitle)}</div>
           <div>Ставка на: ${escapeHtml(bet.fighterName)} - ${bet.amount} 💰 (коэф. ${bet.coefficient}x)</div>
           <div>Потенциальный выигрыш: ${bet.potentialWin} 💰</div>
-          ${fightStatus}
           <div class="small-muted">${bet.date}</div>
         </div>
         <div style="text-align:right">
@@ -812,12 +860,10 @@ async function createNewFight() {
   
   if (saved) {
     alert('Бой создан!');
-    el('newFightTitle').value = '';
-    el('newFightDate').value = '';
-    el('newFighter1').value = '';
-    el('newCoefficient1').value = '';
-    el('newFighter2').value = '';
-    el('newCoefficient2').value = '';
+    // Очищаем поля
+    ['newFightTitle', 'newFightDate', 'newFighter1', 'newCoefficient1', 'newFighter2', 'newCoefficient2'].forEach(id => {
+      el(id).value = '';
+    });
     
     renderAdminFights();
     renderActiveFights();
@@ -853,7 +899,6 @@ function updateUI() {
   } else {
     el('btnLogin').style.display = 'inline-block';
     el('btnMyBets').style.display = 'none';
-    el('adminPanel').style.display = 'none';
   }
 }
 
@@ -942,8 +987,6 @@ document.querySelectorAll('[data-admin-tab]').forEach(tab => {
     
     if (this.dataset.adminTab === 'manageBets') {
       renderAllBets();
-    } else if (this.dataset.adminTab === 'manageFights') {
-      renderAdminFights();
     }
   });
 });
