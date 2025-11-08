@@ -138,6 +138,7 @@
       <button id="btnCart" class="ghost">Корзина</button>
       <button id="btnLogin" class="ghost">Вход</button>
       <button id="btnMyOrders" class="ghost" style="display:none">Мои заявки</button>
+      <button id="btnBets" class="ghost">🎲 Ставки на бои</button>
       <button id="btnSeller" class="ghost">Панель продавца</button>
     </div>
 
@@ -525,6 +526,10 @@ el('btnMyOrders').addEventListener('click', (e) => {
   e.stopPropagation();
   renderMyOrders();
   togglePanel('myOrdersPanel');
+});
+el('btnBets').addEventListener('click', (e) => {
+  e.stopPropagation();
+  window.location.href = 'bets.html';
 });
 
 el('btnSeller').addEventListener('click', (e) => {
@@ -1440,3 +1445,4 @@ window._debug = {
 </body>
 
 </html>
+
