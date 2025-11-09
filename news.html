@@ -1,1 +1,489 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Новости - 100 Рентген</title>
+<style>
+  :root{
+    --accent:#ff9800;
+    --bg:#850000;
+    --panel-bg:rgba(18,18,18,0.96);
+    --muted:#9aa;
+    --card:#101010;
+    --glass: rgba(255,255,255,0.03);
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%;margin:0;font-family:Inter,system-ui,Arial,sans-serif;background:url('https://i.imgur.com/Z1OWJQa.png') center/cover fixed;color:#fff}
+  a{color:inherit}
+  button,input,select,textarea{font:inherit}
+  button{cursor:pointer}
 
+  header{display:flex;justify-content:space-between;align-items:center;padding:12px 18px;background:linear-gradient(180deg,rgba(0,0,0,0.6),rgba(0,0,0,0.2));gap:12px;position:sticky;top:0;z-index:40}
+  .brand{display:flex;flex-direction:column}
+  .brand h1{margin:0;font-size:18px}
+  .controls{display:flex;gap:8px}
+
+  .container{padding:18px;max-width:1000px;margin:0 auto}
+  
+  .panel{background:var(--panel-bg);padding:16px;border-radius:10px;border:1px solid var(--glass);margin-bottom:18px}
+  
+  .btn{background:var(--accent);color:#000;padding:8px 16px;border-radius:8px;border:none;text-decoration:none;display:inline-block}
+  .ghost{background:transparent;border:1px solid var(--glass);color:#fff;padding:6px 12px;border-radius:6px}
+  
+  .news-card{background:var(--card);border:1px solid var(--glass);padding:16px;border-radius:8px;margin-bottom:16px}
+  .news-header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:12px}
+  .news-title{font-size:18px;font-weight:bold;margin:0;flex:1}
+  .news-date{color:var(--muted);font-size:14px;margin-left:12px}
+  .news-content{line-height:1.5;margin-bottom:12px}
+  .news-image{max-width:100%;border-radius:6px;margin:12px 0}
+  .news-author{color:var(--muted);font-size:14px;border-top:1px solid var(--glass);padding-top:8px}
+  
+  .form-row{display:flex;gap:12px;margin-bottom:12px;align-items:center}
+  input,select,textarea{width:100%;padding:8px;border-radius:6px;border:1px solid #222;background:#080808;color:#fff}
+  textarea{min-height:100px;resize:vertical}
+  
+  .small-muted{font-size:12px;color:var(--muted)}
+  .muted{color:var(--muted)}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="brand">
+    <h1>📰 Новости - 100 Рентген</h1>
+    <div class="muted">Лента новостей/div>
+  </div>
+  <div class="controls">
+    <button id="btnAdmin" class="ghost">Панель админа</button>
+    <a href="index.html" class="btn">← В магазин</a>
+  </div>
+</header>
+
+<div class="container">
+  <!-- Лента новостей -->
+  <div id="newsFeed">
+    <div class="panel">
+      <h3>📢 Последние новости</h3>
+      <div id="newsList"></div>
+    </div>
+  </div>
+
+  <!-- Панель админа -->
+  <div id="adminPanel" class="panel" style="display:none">
+    <h3>👑 Панель админа новостей</h3>
+    
+    <div id="newsAdminLoginArea">
+      <input id="newsAdminPass" placeholder="Пароль админа новостей" type="password" />
+      <div style="display:flex;gap:8px;margin-top:8px">
+        <button id="btnNewsAdminLogin" class="btn">Войти</button>
+        <button class="ghost" onclick="closeAdminPanel()">Закрыть</button>
+      </div>
+    </div>
+
+    <div id="newsAdminArea" style="display:none;margin-top:12px">
+      <div class="tabs" style="display:flex;gap:8px;margin-bottom:16px">
+        <button class="tab active" data-admin-tab="createNews">Создать новость</button>
+        <button class="tab" data-admin-tab="manageNews">Управление новостями</button>
+        <button class="ghost" onclick="closeAdminPanel()" style="margin-left:auto">Выйти</button>
+      </div>
+
+      <!-- Создание новости -->
+      <div id="createNewsTab" class="admin-tab-content">
+        <h4>Создать новую запись</h4>
+        <div class="form-row">
+          <input type="text" id="newsTitle" placeholder="Заголовок новости" style="flex:2">
+        </div>
+        <div class="form-row">
+          <textarea id="newsContent" placeholder="Текст новости..."></textarea>
+        </div>
+        <div class="form-row">
+          <input type="text" id="newsImage" placeholder="URL изображения (необязательно)" style="flex:1">
+          <input type="text" id="newsAuthor" placeholder="Автор" style="flex:1" value="Администрация">
+        </div>
+        <button id="btnCreateNews" class="btn">Опубликовать новость</button>
+      </div>
+
+      <!-- Управление новостями -->
+      <div id="manageNewsTab" class="admin-tab-content" style="display:none">
+        <h4>Управление новостями</h4>
+        <div id="newsManagementList"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// Конфигурация JSONBin
+const JSONBIN_BASE_URL = 'https://api.jsonbin.io/v3/b';
+const JSONBIN_MASTER_KEY = '$2a$10$wTicXNpl/tYWk2p1tuUuC.w87l4en0x8a9e7STVUKFIfFQnaZFdLC';
+const JSONBIN_ACCESS_KEY = '$2a$10$.twuYFU3QYQ1ZXPY.uyfB.7EryqBOUndWb3UbhjCfknwxJvHKo2LG';
+
+const JSONBIN_IDS = {
+  NEWS: '690f5192d0ea881f40dbd74b', // Новый bin для новостей
+  CONFIG: '69050c5343b1c97be98f23c9'
+};
+
+// Ключи localStorage
+const KEY_NEWS = 'news_v1';
+const KEY_SELLER_CONFIG = 'sellerConfig';
+
+// Данные по умолчанию
+const DEFAULT_NEWS = [
+  {
+    id: 1,
+    title: "Добро пожаловать в магазин 100 Рентген!",
+    content: "Мы рады приветствовать вас в нашем магазине. Здесь вы найдете лучшие товары для сталкеров по доступным ценам. Следите за обновлениями и акциями!",
+    image: "",
+    author: "Администрация",
+    date: "2024-01-15 10:00",
+    status: "published"
+  },
+  {
+    id: 2,
+    title: "Запуск системы ставок на бои",
+    content: "Теперь вы можете делать ставки на исходы боев между сталкерами и мутантами! Переходите в раздел 'Ставки на бои' и испытайте удачу.",
+    image: "",
+    author: "Администрация", 
+    date: "2024-01-16 14:30",
+    status: "published"
+  }
+];
+
+const DEFAULT_CONFIG = {
+  sellerPassword: "admin123",
+  betsAdminPassword: "bets123",
+  newsAdminPassword: "news123"
+};
+
+let news = [];
+let config = {};
+
+// Утилиты
+const el = id => document.getElementById(id);
+
+// JSONBin функции
+async function jsonbinFetch(binId) {
+  const url = `${JSONBIN_BASE_URL}/${binId}/latest`;
+  const headers = {
+    'Content-Type': 'application/json',
+    'X-Master-Key': JSONBIN_MASTER_KEY,
+    'X-Access-Key': JSONBIN_ACCESS_KEY
+  };
+  
+  try {
+    const response = await fetch(url, { headers });
+    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+    const data = await response.json();
+    return data.record;
+  } catch (error) {
+    console.error('JSONBin fetch error:', error);
+    const fallback = localStorage.getItem(`fallback_${binId}`);
+    return fallback ? JSON.parse(fallback) : null;
+  }
+}
+
+async function jsonbinUpdate(binId, data) {
+  const url = `${JSONBIN_BASE_URL}/${binId}`;
+  const headers = {
+    'Content-Type': 'application/json',
+    'X-Master-Key': JSONBIN_MASTER_KEY,
+    'X-Access-Key': JSONBIN_ACCESS_KEY
+  };
+  
+  try {
+    const response = await fetch(url, {
+      method: 'PUT',
+      headers: headers,
+      body: JSON.stringify(data)
+    });
+    
+    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+    const result = await response.json();
+    localStorage.setItem(`fallback_${binId}`, JSON.stringify(data));
+    return result.record;
+  } catch (error) {
+    console.error('JSONBin update error:', error);
+    localStorage.setItem(`fallback_${binId}`, JSON.stringify(data));
+    return data;
+  }
+}
+
+async function loadJSON(key, fallback) {
+  try {
+    let binId;
+    switch(key) {
+      case KEY_NEWS: binId = JSONBIN_IDS.NEWS; break;
+      case KEY_SELLER_CONFIG: binId = JSONBIN_IDS.CONFIG; break;
+      default: return JSON.parse(JSON.stringify(fallback));
+    }
+    
+    const data = await jsonbinFetch(binId);
+    return data || JSON.parse(JSON.stringify(fallback));
+  } catch(e) {
+    console.error('Load error:', e);
+    return JSON.parse(JSON.stringify(fallback));
+  }
+}
+
+async function saveJSON(key, val) {
+  try {
+    let binId;
+    switch(key) {
+      case KEY_NEWS: binId = JSONBIN_IDS.NEWS; break;
+      case KEY_SELLER_CONFIG: binId = JSONBIN_IDS.CONFIG; break;
+      default: return;
+    }
+    
+    await jsonbinUpdate(binId, val);
+    return true;
+  } catch(e) {
+    console.error('Save error:', e);
+    return false;
+  }
+}
+
+// Инициализация данных
+async function initializeData() {
+  console.log('Starting news initialization...');
+  
+  try {
+    const [newsData, configData] = await Promise.all([
+      loadJSON(KEY_NEWS, DEFAULT_NEWS),
+      loadJSON(KEY_SELLER_CONFIG, DEFAULT_CONFIG)
+    ]);
+
+    news = newsData || DEFAULT_NEWS;
+    config = configData || DEFAULT_CONFIG;
+
+    // Если bins пустые, создаем начальные данные
+    if (!newsData || newsData.length === 0) {
+      console.log('Creating initial news...');
+      news = DEFAULT_NEWS;
+      await saveJSON(KEY_NEWS, news);
+    }
+
+    if (!configData) {
+      console.log('Creating initial config...');
+      await saveJSON(KEY_SELLER_CONFIG, DEFAULT_CONFIG);
+    }
+
+    console.log('News loaded:', news);
+    renderNews();
+
+  } catch (error) {
+    console.error('Error initializing news:', error);
+    news = DEFAULT_NEWS;
+    renderNews();
+  }
+}
+
+// Рендер новостей
+function renderNews() {
+  const list = el('newsList');
+  const publishedNews = news.filter(item => item.status === 'published').sort((a, b) => new Date(b.date) - new Date(a.date));
+  
+  if (publishedNews.length === 0) {
+    list.innerHTML = '<div class="muted">Новостей пока нет</div>';
+    return;
+  }
+  
+  list.innerHTML = publishedNews.map(item => `
+    <div class="news-card">
+      <div class="news-header">
+        <h3 class="news-title">${escapeHtml(item.title)}</h3>
+        <div class="news-date">${new Date(item.date).toLocaleString()}</div>
+      </div>
+      ${item.image ? `<img src="${item.image}" alt="${escapeHtml(item.title)}" class="news-image">` : ''}
+      <div class="news-content">${escapeHtml(item.content).replace(/\n/g, '<br>')}</div>
+      <div class="news-author">Автор: ${escapeHtml(item.author)}</div>
+    </div>
+  `).join('');
+}
+
+// Рендер управления новостями
+function renderNewsManagement() {
+  const list = el('newsManagementList');
+  
+  if (news.length === 0) {
+    list.innerHTML = '<div class="muted">Новостей нет</div>';
+    return;
+  }
+  
+  // Сортируем по дате (новые сверху)
+  const sortedNews = [...news].sort((a, b) => new Date(b.date) - new Date(a.date));
+  
+  list.innerHTML = sortedNews.map(item => `
+    <div class="news-card">
+      <div class="news-header">
+        <h4 class="news-title">${escapeHtml(item.title)}</h4>
+        <div class="news-date">${new Date(item.date).toLocaleString()}</div>
+      </div>
+      <div class="news-content" style="max-height: 100px; overflow: hidden;">${escapeHtml(item.content)}</div>
+      <div style="display:flex;gap:8px;margin-top:12px">
+        <button class="btn" onclick="toggleNewsStatus(${item.id})">
+          ${item.status === 'published' ? 'Снять с публикации' : 'Опубликовать'}
+        </button>
+        <button class="ghost" onclick="editNews(${item.id})">Редактировать</button>
+        <button class="ghost" onclick="deleteNews(${item.id})" style="color:#f44336">Удалить</button>
+      </div>
+      <div class="small-muted">Статус: ${item.status === 'published' ? '🟢 Опубликовано' : '🔴 Черновик'}</div>
+    </div>
+  `).join('');
+}
+
+// Создание новости
+async function createNews() {
+  const title = el('newsTitle').value.trim();
+  const content = el('newsContent').value.trim();
+  const image = el('newsImage').value.trim();
+  const author = el('newsAuthor').value.trim() || 'Администрация';
+  
+  if (!title || !content) {
+    alert('Заполните заголовок и текст новости');
+    return;
+  }
+  
+  const newItem = {
+    id: Date.now(),
+    title: title,
+    content: content,
+    image: image,
+    author: author,
+    date: new Date().toISOString(),
+    status: 'published'
+  };
+  
+  news.push(newItem);
+  const saved = await saveJSON(KEY_NEWS, news);
+  
+  if (saved) {
+    alert('Новость опубликована!');
+    // Очищаем поля
+    ['newsTitle', 'newsContent', 'newsImage'].forEach(id => {
+      el(id).value = '';
+    });
+    el('newsAuthor').value = 'Администрация';
+    
+    renderNews();
+    renderNewsManagement();
+  } else {
+    alert('Ошибка при публикации новости');
+  }
+}
+
+// Удаление новости
+async function deleteNews(newsId) {
+  if (!confirm('Удалить эту новость?')) {
+    return;
+  }
+  
+  news = news.filter(item => item.id !== newsId);
+  const saved = await saveJSON(KEY_NEWS, news);
+  
+  if (saved) {
+    alert('Новость удалена!');
+    renderNews();
+    renderNewsManagement();
+  }
+}
+
+// Изменение статуса новости
+async function toggleNewsStatus(newsId) {
+  const item = news.find(n => n.id === newsId);
+  if (item) {
+    item.status = item.status === 'published' ? 'draft' : 'published';
+    const saved = await saveJSON(KEY_NEWS, news);
+    
+    if (saved) {
+      alert(`Новость ${item.status === 'published' ? 'опубликована' : 'перемещена в черновики'}!`);
+      renderNews();
+      renderNewsManagement();
+    }
+  }
+}
+
+// Редактирование новости (упрощенная версия)
+async function editNews(newsId) {
+  const item = news.find(n => n.id === newsId);
+  if (!item) return;
+  
+  const newTitle = prompt('Новый заголовок:', item.title);
+  if (newTitle === null) return;
+  
+  const newContent = prompt('Новый текст:', item.content);
+  if (newContent === null) return;
+  
+  item.title = newTitle.trim();
+  item.content = newContent.trim();
+  item.date = new Date().toISOString();
+  
+  const saved = await saveJSON(KEY_NEWS, news);
+  
+  if (saved) {
+    alert('Новость обновлена!');
+    renderNews();
+    renderNewsManagement();
+  }
+}
+
+// Админ функции
+function closeAdminPanel() {
+  el('adminPanel').style.display = 'none';
+  el('newsAdminLoginArea').style.display = 'block';
+  el('newsAdminArea').style.display = 'none';
+  el('newsAdminPass').value = '';
+}
+
+el('btnNewsAdminLogin').addEventListener('click', async () => {
+  const password = el('newsAdminPass').value;
+  
+  if (password === config.newsAdminPassword) {
+    el('newsAdminLoginArea').style.display = 'none';
+    el('newsAdminArea').style.display = 'block';
+    renderNewsManagement();
+  } else {
+    alert('Неверный пароль админа новостей!');
+  }
+});
+
+el('btnAdmin').addEventListener('click', () => {
+  el('adminPanel').style.display = 'block';
+  el('newsAdminLoginArea').style.display = 'block';
+  el('newsAdminArea').style.display = 'none';
+  el('newsAdminPass').value = '';
+});
+
+el('btnCreateNews').addEventListener('click', createNews);
+
+// Админ вкладки
+document.querySelectorAll('[data-admin-tab]').forEach(tab => {
+  tab.addEventListener('click', function() {
+    document.querySelectorAll('.admin-tab-content').forEach(content => content.style.display = 'none');
+    document.querySelectorAll('[data-admin-tab]').forEach(t => t.classList.remove('active'));
+    
+    el(`${this.dataset.adminTab}Tab`).style.display = 'block';
+    this.classList.add('active');
+    
+    if (this.dataset.adminTab === 'manageNews') {
+      renderNewsManagement();
+    }
+  });
+});
+
+// Утилиты
+function escapeHtml(unsafe) {
+  if (!unsafe) return '';
+  return unsafe.toString()
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
+// Инициализация
+initializeData();
+</script>
+</body>
+</html>
