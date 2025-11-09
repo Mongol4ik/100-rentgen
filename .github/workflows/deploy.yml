@@ -1,0 +1,25 @@
+name: Deploy with Secure Keys
+
+on:
+  push:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Replace keys in HTML files
+      run: |
+        sed -i "s/\$2a\$10\$wTicXNpl\/tYWk2p1tuUuC\.w87l4en0x8a9e7STVUKFIfFQnaZFdLC/${{ secrets.JSONBIN_MASTER_KEY }}/g" *.html
+        sed -i "s/\$2a\$10\$\.twuYFU3QYQ1ZXPY\.uyfB\.7EryqBOUndWb3UbhjCfknwxJvHKo2LG/${{ secrets.JSONBIN_ACCESS_KEY }}/g" *.html
+        
+    - name: Deploy to GitHub Pages
+      uses: peaceiris/actions-gh-pages@v3
+      with:
+        github_token: ${{ secrets.GITHUB_TOKEN }}
+        publish_dir: ./
