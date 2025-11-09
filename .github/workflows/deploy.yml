@@ -6,20 +6,40 @@ on:
   workflow_dispatch:
 
 jobs:
-  deploy:
+  secure-deploy:
     runs-on: ubuntu-latest
     
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
       
-    - name: Replace keys in HTML files
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+        
+    - name: Replace JSONBin keys
+      env:
+        MASTER_KEY: "${{ secrets.JSONBIN_MASTER_KEY }}"
+        ACCESS_KEY: "${{ secrets.JSONBIN_ACCESS_KEY }}"
       run: |
-        sed -i "s/\$2a\$10\$wTicXNpl\/tYWk2p1tuUuC\.w87l4en0x8a9e7STVUKFIfFQnaZFdLC/${{ secrets.JSONBIN_MASTER_KEY }}/g" *.html
-        sed -i "s/\$2a\$10\$\.twuYFU3QYQ1ZXPY\.uyfB\.7EryqBOUndWb3UbhjCfknwxJvHKo2LG/${{ secrets.JSONBIN_ACCESS_KEY }}/g" *.html
+        # Сначала заменяем плейсхолдеры (если они есть)
+        for file in *.html; do
+          if [ -f "$file" ]; then
+            echo "Processing $file"
+            # Экранируем специальные символы в ключах для sed
+            ESCAPED_MASTER_KEY=$(printf '%s\n' "$MASTER_KEY" | sed 's/[[\.*^$()+?{|]/\\&/g')
+            ESCAPED_ACCESS_KEY=$(printf '%s\n' "$ACCESS_KEY" | sed 's/[[\.*^$()+?{|]/\\&/g')
+            
+            # Заменяем плейсхолдеры на реальные ключи
+            sed -i "s/MASTER_KEY_PLACEHOLDER/$ESCAPED_MASTER_KEY/g" "$file"
+            sed -i "s/ACCESS_KEY_PLACEHOLDER/$ESCAPED_ACCESS_KEY/g" "$file"
+          fi
+        done
         
     - name: Deploy to GitHub Pages
-      uses: peaceiris/actions-gh-pages@v3
+      uses: peaceiris/actions-gh-pages@v4
       with:
         github_token: ${{ secrets.GITHUB_TOKEN }}
         publish_dir: ./
+        force_orphan: true
